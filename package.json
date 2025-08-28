@@ -1,0 +1,20 @@
+{
+  "name": "wtui",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "bencode": "^4.0.0",
+    "inquirer": "^8.2.7",
+    "parse-torrent": "^11.0.18",
+    "webtorrent": "^2.8.4",
+    "webtorrent-cli": "^5.1.3"
+  }
+}
