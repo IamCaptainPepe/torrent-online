@@ -26,7 +26,7 @@ Tested on Node.js 24 (macOS). Should work on Linux/Windows if vlc is in PATH.
 
 ## Installation
 
-    git clone https://github.com/<your-username>/torrent-online.git
+    git clone https://github.com/IamCaptainPepe/torrent-online.git
     cd torrent-online
     [ -f package.json ] || npm init -y
     npm i inquirer@8 webtorrent webtorrent-cli
