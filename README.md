@@ -1,44 +1,37 @@
-# torrent-online — WebTorrent → VLC (плейлист одним процессом)
+# TorrentOnline
 
-Утилита для стрима выбранных файлов из `.torrent`/`magnet:` в VLC. Теперь VLC запускается **один раз** со всем плейлистом, а кэш очищается **после выхода VLC** — больше не рвёт следующую серию.
+Стрим `.torrent`/`magnet:` в VLC. Один процесс VLC на весь плейлист. Кэш чистится после выхода.
 
-## Что нового
-- Один процесс VLC на все выбранные серии.
-- HTTP‑сервер WebTorrent держим до конца плейлиста.
-- Точная очистка кэша: по умолчанию весь каталог удаляется **после** выхода VLC; можно отключить (`--keep-cache`).
-- Безопасные выходы: ловим SIGINT/SIGTERM и чистим кэш.
-- Натуральная сортировка (E1, E2, …), фильтр по подстроке или `/regex/`.
+## Возможности
+- Плейлист одним запуском VLC.
+- Локальный HTTP-сервер (fallback, с Range).
+- Очистка кэша по завершении (`--keep-cache` чтобы не чистить).
+- Сортировка `.torrent` по дате (новые сверху).
+- CLI и `.app` (открывает Terminal).
 
 ## Требования
+- macOS 11+ (Node 24 тест)
 - Node.js ≥ 18
-- VLC в PATH, либо `/Applications/VLC.app` на macOS
+- VLC (`/Applications/VLC.app` или в PATH)
 
 ## Установка
-```bash
 npm i
-```
-или
-```bash
-npm i inquirer@8 webtorrent
-```
 
-## Запуск
-```bash
+## Запуск (CLI)
 node wtui.js
-# или
-./wtui.js
-```
+# флаги:
+# --keep-cache                не удалять кэш после выхода VLC
+# --network-caching=<ms>      прокинуть в VLC (по умолчанию 1500)
 
-## Флаги
-- `--keep-cache` — не удалять кэш после выхода VLC.
-- `--network-caching=<ms>` — прокинуть значение VLC (по умолчанию 1500).
+**Кэш по умолчанию:** `~/Movies/WebTorrent`.
 
-## Поток
-1. Выбираешь источник: `.torrent` из текущей папки/`~/Downloads`, `magnet:`, или путь к `.torrent`.
-2. Список файлов (видео) → фильтр → мультивыбор.
-3. Указываешь кэш (дефолт `~/Movies/WebTorrent`).
-4. Открывается VLC с плейлистом. После выхода — кэш очищается (если не `--keep-cache`).
+## Сборка .app (macOS)
+./build/app.sh
+open dist/TorrentOnline.app
 
-## Известные моменты
-- Порт берётся случайно из 8123..10122. Если занят — пробуем соседний.
-- Для magnet‑ссылок список файлов покажется после получения metadata.
+> DMG по желанию: `brew install create-dmg` и снова `./build/app.sh`.
+
+## Релиз
+node -e "const fs=require(\"fs\");const p=JSON.parse(fs.readFileSync(\"package.json\",\"utf8\"));p.version=\"1.3.2\";fs.writeFileSync(\"package.json\",JSON.stringify(p,null,2)+\"\\n\")"
+git add -A && git commit -m "release: 1.3.2 app bundle + Terminal launcher" && git tag v1.3.2
+git push -u origin main --tags

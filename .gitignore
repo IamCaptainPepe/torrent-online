@@ -3,3 +3,8 @@ node_modules/
 *.log
 .env
 .cache/
+dist/
+build/stage/
+*.dmg
+*.zip
+*.bak

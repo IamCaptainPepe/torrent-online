@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+import http from 'node:http';
+import { pipeline } from 'node:stream';
+
 /*
   torrent-online — WebTorrent → VLC TUI (ESM)
   Исправляет ERR_REQUIRE_ASYNC_MODULE с WebTorrent 2.x (TLA) на Node 24.
@@ -114,6 +117,61 @@ async function listTorrentFilesSortedByMtime(dir) {
   }
 }
 
+function contentTypeByExt(ext) {
+  switch (ext) {
+    case '.mp4': return 'video/mp4';
+    case '.m4v': return 'video/x-m4v';
+    case '.mkv': return 'video/x-matroska';
+    case '.mov': return 'video/quicktime';
+    case '.webm': return 'video/webm';
+    case '.avi': return 'video/x-msvideo';
+    case '.mpg':
+    case '.mpeg': return 'video/mpeg';
+    default: return 'application/octet-stream';
+  }
+}
+
+function makeServer(torrent) {
+  if (typeof torrent.createServer === 'function') return makeServer(torrent);
+  return http.createServer((req, res) => {
+    const u = new URL(req.url, 'http://127.0.0.1');
+    if (u.pathname === '/') {
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      const list = torrent.files.map((f, i) => `<li><a href="/${i}">${f.path}</a></li>`).join('');
+      res.end(`<ul>${list}</ul>`);
+      return;
+    }
+    const idxStr = u.pathname.slice(1);
+    if (!/^\d+$/.test(idxStr)) { res.statusCode = 404; res.end('not found'); return; }
+    const idx = Number(idxStr);
+    const file = torrent.files[idx];
+    if (!file) { res.statusCode = 404; res.end('not found'); return; }
+
+    const total = file.length;
+    res.setHeader('Accept-Ranges', 'bytes');
+    res.setHeader('Content-Type', contentTypeByExt(path.extname(file.name).toLowerCase()));
+
+    const range = req.headers.range;
+    if (range) {
+      const m = /bytes=(\d+)-(\d+)?/.exec(range);
+      const start = m ? parseInt(m[1], 10) : 0;
+      const end = (m && m[2]) ? parseInt(m[2], 10) : (total - 1);
+      if (start >= total || end >= total || start > end) {
+        res.writeHead(416, { 'Content-Range': `bytes */${total}` });
+        res.end(); return;
+      }
+      res.writeHead(206, {
+        'Content-Range': `bytes ${start}-${end}/${total}`,
+        'Content-Length': end - start + 1
+      });
+      file.createReadStream({ start, end }).pipe(res);
+    } else {
+      res.setHeader('Content-Length', total);
+      file.createReadStream().pipe(res);
+    }
+  });
+}
+
 async function promptSource() {
   const cwdTorrents = await listTorrentFilesSortedByMtime(process.cwd());
   const dlTorrents = await listTorrentFilesSortedByMtime(path.join(os.homedir(), 'Downloads'));
@@ -210,7 +268,7 @@ async function main() {
   if (!files.length) throw new Error('Видео файлов не найдено');
 
   // Фильтр и выбор
-  const filteredNames = await promptSortAndFilter(files.map(f => f.name));
+  const filteredNames = files.map(f => f.name);
   const nameToIdx = new Map(files.map(f => [f.name, f.idx]));
   const pickedFilteredIdx = await promptSelect(filteredNames);
   const chosenTorrentIdx = pickedFilteredIdx.map(i => nameToIdx.get(filteredNames[i]));
@@ -220,7 +278,7 @@ async function main() {
   chosenTorrentIdx.forEach(i => torrent.files[i].select());
 
   // Поднимаем HTTP‑сервер для torrent
-  const server = torrent.createServer();
+  const server = makeServer(torrent);
   const port = await listenOnFreePort(server);
 
   // Готовим плейлист из ссылок вида /<index>
@@ -236,7 +294,6 @@ async function main() {
   let cleaning = false;
   async function shutdown(reason) {
     if (cleaning) return; cleaning = true;
-    console.log(`\nВыходим (${reason})…`);
     try { server.close(); } catch {}
     try { await new Promise(r => torrent.destroy(r)); } catch {}
     try { await new Promise(r => client.destroy(r)); } catch {}
@@ -245,13 +302,17 @@ async function main() {
   }
   process.on('SIGINT', () => shutdown('SIGINT'));
   process.on('SIGTERM', () => shutdown('SIGTERM'));
-  process.on('uncaughtException', e => { console.error(e); shutdown('uncaughtException'); });
-  process.on('unhandledRejection', e => { console.error(e); shutdown('unhandledRejection'); });
-
-  vlc.on('exit', async (code, sig) => {
-    console.log(`VLC завершился (${code ?? ''} ${sig ?? ''}).`);
-    await shutdown('VLC exit');
+  process.on('unhandledRejection', (e) => {
+    const msg = (e && (e.message || e)) + '';
+    if (/premature|aborted|EPIPE|ECONNRESET/i.test(msg)) return;
+    console.error('unhandledRejection:', msg);
   });
+  process.on('uncaughtException', (e) => {
+    const msg = (e && (e.message || e)) + '';
+    if (/premature|aborted|EPIPE|ECONNRESET/i.test(msg)) return;
+    console.error('uncaughtException:', msg);
+  });
+  vlc.on('exit', async () => { await shutdown('VLC exit'); });
 }
 
 main().catch(err => { console.error('Ошибка:', err?.stack || err?.message || err); process.exit(1); });
