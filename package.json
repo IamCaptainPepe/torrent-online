@@ -1,0 +1,19 @@
+{
+  "name": "torrent-online",
+  "version": "1.2.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "torrent-online": "./wtui.js"
+  },
+  "scripts": {
+    "start": "node wtui.js"
+  },
+  "dependencies": {
+    "inquirer": "^8.2.6",
+    "webtorrent": "^2.8.4"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
