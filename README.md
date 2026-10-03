@@ -42,6 +42,7 @@ node wtui.js "https://example.com/file.torrent"
 | `--resume` | продолжить с прошлой позиции (VLC `--start-time`) |
 | `--lan` | слушать 0.0.0.0 + токен в URL — смотреть с телефона/ТВ в сети |
 | `--no-vlc` | только браузер-стриминг, без VLC |
+| `--web` | графический интерфейс в браузере: поиск, карточки, прогресс, выбор файлов |
 | `--port=<N>` | фиксированный порт (иначе авто-поиск 8123..10122) |
 | `--help` | справка |
 
@@ -56,6 +57,20 @@ node wtui.js "https://example.com/file.torrent"
 - Прогресс-строка: `%`, скорость, пиры; таймаут метаданных magnet (60 с)
 - Фильтр по имени (подстрока или `/regex/`) перед выбором файлов
 - Проверка VLC на старте с внятной ошибкой
+
+## Веб-GUI (`--web`)
+```bash
+node wtui.js --web
+```
+Тот же процесс, тот же порт — только в браузере открывается красивый интерфейс: поиск (Rutor/TPB/1337x, RU→EN словарь), карточки торрентов с прогрессом, выбор файлов галочками, кнопки «▶ VLC» и «▶ Браузер». С телефона в Wi-Fi — через `--lan` (токен в URL).
+
+## Нативное приложение (Tauri, macOS)
+Окошко с иконкой, без терминала: над тем же веб-GUI.
+```bash
+# один раз: Rust (https://rustup.rs) + Xcode CLT
+cd desktop && ./build-mac.sh
+# → desktop/src-tauri/target/release/bundle/macos/TorrentOnline.app
+```
 
 ## .app (macOS)
 Скачай готовый `TorrentOnline.app.zip` из [релизов](../../releases), распакуй и перетащи в `/Applications`.
@@ -137,6 +152,7 @@ node wtui.js "https://example.com/file.torrent"
 | `--resume` | continue from the last position (VLC `--start-time`) |
 | `--lan` | listen on 0.0.0.0 + token in URL — watch from phone/TV on your network |
 | `--no-vlc` | browser streaming only, no VLC |
+| `--web` | graphical UI in the browser: search, cards, progress, file picker |
 | `--port=<N>` | fixed port (otherwise auto-scan 8123..10122) |
 | `--help` | help |
 
@@ -151,6 +167,20 @@ Default cache: `~/Movies/WebTorrent`. **Note: the cache folder is deleted on exi
 - Progress line: %, speed, peers; magnet metadata timeout (60 s)
 - Name filter (substring or `/regex/`) before picking files
 - VLC presence checked at startup with a clear error
+
+## Web GUI (`--web`)
+```bash
+node wtui.js --web
+```
+Same process, same port — the browser opens a polished UI: search (Rutor/TPB/1337x, RU→EN dictionary), torrent cards with progress, file checkboxes, “▶ VLC” / “▶ Browser” buttons. From a phone on your Wi-Fi — use `--lan` (token in URL).
+
+## Native app (Tauri, macOS)
+A window with an icon, no terminal — wraps the same web GUI.
+```bash
+# once: Rust (https://rustup.rs) + Xcode CLT
+cd desktop && ./build-mac.sh
+# → desktop/src-tauri/target/release/bundle/macos/TorrentOnline.app
+```
 
 ## .app (macOS)
 Download the prebuilt `TorrentOnline.app.zip` from [releases](../../releases), unzip and drag it to `/Applications`.

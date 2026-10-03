@@ -1,0 +1,9 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>TorrentOnline</title>
+<body style="background:#0f1115;color:#e8ecf1;font-family:-apple-system,sans-serif;padding:2em">
+🦀 Запускаю TorrentOnline…
+<script>
+function ping(){fetch('http://127.0.0.1:8123/?ping=1',{mode:'no-cors'}).then(function(){location.href='http://127.0.0.1:8123/';},function(){setTimeout(ping,700);});}
+ping();
+</script>

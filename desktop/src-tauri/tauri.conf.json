@@ -1,0 +1,27 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "TorrentOnline",
+  "mainBinaryName": "TorrentOnline",
+  "version": "1.5.0",
+  "identifier": "com.captainpepe.torrentonline",
+  "build": { "frontendDist": "../ui" },
+  "app": {
+    "windows": [
+      {
+        "title": "TorrentOnline",
+        "url": "http://127.0.0.1:8123/",
+        "width": 1150,
+        "height": 820,
+        "minWidth": 720,
+        "minHeight": 520
+      }
+    ],
+    "security": { "csp": null }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app"],
+    "resources": ["../app"],
+    "icon": ["icons/icon.png"]
+  }
+}

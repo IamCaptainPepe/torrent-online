@@ -28,14 +28,17 @@ const HELP = `torrent-online — стрим торрента в VLC или бр�
   --resume                  продолжить с прошлой позиции (VLC --start-time)
   --lan                     слушать 0.0.0.0 + токен в URL (смотреть с телефона)
   --no-vlc                  только браузер-стриминг, без VLC
+  --web                     графический интерфейс в браузере (поиск/выбор/прогресс)
   --port=<N>                фиксированный порт (иначе авто 8123..10122)
   --help, -h                эта справка`;
 
 function parseCli() {
-  const opts = { keepCache: false, resume: false, lan: false, noVlc: false, caching: 3000, port: 0 };
+  const opts = { keepCache: false, resume: false, lan: false, noVlc: false, web: false, noOpen: false, caching: 3000, port: 0 };
   const positional = [];
   for (const a of process.argv.slice(2)) {
     if (a === '--keep-cache') opts.keepCache = true;
+    else if (a === '--web') opts.web = true;
+    else if (a === '--no-open') opts.noOpen = true;
     else if (a === '--resume') opts.resume = true;
     else if (a === '--lan') opts.lan = true;
     else if (a === '--no-vlc') opts.noVlc = true;
@@ -237,6 +240,10 @@ function handleReq(req, res, torrent, base) {
     const file = torrent.files[Number(mFile[1])];
     if (!file) { res.statusCode = 404; res.end('not found'); return; }
 
+    serveFile(req, res, file);
+}
+
+function serveFile(req, res, file) {
     const total = file.length;
     res.setHeader('Accept-Ranges', 'bytes');
     res.setHeader('Content-Type', contentTypeByExt(path.extname(file.name).toLowerCase()));
@@ -530,10 +537,241 @@ function watchFolder() {
   }).catch(() => {});
 }
 
+// ---- WEB GUI (--web) ----
+const WEB_HTML = `<!doctype html><html><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><title>TorrentOnline</title><style>
+:root{--bg:#0f1115;--card:#171a21;--line:#232833;--txt:#e8ecf1;--mut:#8a93a3;--acc:#7fd4ff}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.45 -apple-system,'Segoe UI',Roboto,sans-serif}
+header{display:flex;gap:10px;align-items:center;padding:14px 20px;border-bottom:1px solid var(--line);position:sticky;top:0;background:rgba(15,17,21,.92);backdrop-filter:blur(6px)}
+header b{font-size:18px}
+.wrap{max-width:900px;margin:0 auto;padding:16px}
+.search{display:flex;gap:8px}
+input#q{flex:1;min-width:0;background:#1d222c;border:1px solid #2a3140;color:var(--txt);padding:10px 12px;border-radius:8px;font-size:15px}
+input#q:focus{outline:none;border-color:var(--acc)}
+button{background:#223046;color:var(--acc);border:1px solid #2f4160;padding:9px 14px;border-radius:8px;cursor:pointer;font-size:14px}
+button:hover{background:#2a3c58}
+.note{color:var(--mut);margin:8px 0;font-size:13px}
+.row{display:flex;gap:10px;align-items:baseline;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin:6px 0;cursor:pointer}
+.row:hover{border-color:#33415e}
+.tag{background:#223046;color:var(--acc);border-radius:6px;padding:1px 7px;font-size:12px;flex:none}
+.meta{color:var(--mut);font-size:12px;flex:none}
+.rname{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;margin:10px 0}
+.tname{font-weight:600;margin-bottom:4px;word-break:break-word}
+.tmeta{color:var(--mut);font-size:13px}
+.bar{height:6px;background:#232a36;border-radius:3px;margin:8px 0;overflow:hidden}
+.bar div{height:100%;background:linear-gradient(90deg,#3b82f6,#7fd4ff);border-radius:3px}
+.fin{display:block;padding:4px 2px;cursor:pointer;color:var(--mut);font-size:14px}
+.fin input{margin-right:8px;accent-color:#3b82f6}
+.acts{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap}
+.acts .del{margin-left:auto;color:#ff8a8a;border-color:#4a2a33;background:#2a1c22}
+h3{color:var(--mut);font-size:14px;margin:18px 0 4px;font-weight:500}
+video{width:100vw;height:100vh;background:#000;display:block;margin:0}
+</style></head><body>
+<header>🦀 <b>TorrentOnline</b></header>
+<div class=wrap>
+<div class=search><input id=q placeholder="Поиск: пацаны 4 сезон · breaking bad · magnet:…" autocomplete=off><button id=go>Искать</button><button id=mag>+ magnet</button></div>
+<div id=notes></div>
+<div id=results></div>
+<h3>Торренты</h3>
+<div id=torrents></div>
+</div>
+<script>
+var BASE="__BASE__";
+function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+function api(p,body){var o=body?{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}:undefined;return fetch(BASE+p,o).then(function(r){return r.json();});}
+function doSearch(){var q=document.getElementById('q').value.trim();if(!q)return;var box=document.getElementById('results');box.innerHTML='<div class=note>Ищу…</div>';
+api('/api/search?q='+encodeURIComponent(q)).then(function(d){
+var h='';(d.notes||[]).forEach(function(n){h+='<div class=note>⚠ '+esc(n)+'</div>';});
+if(!d.items.length){box.innerHTML=h+'<div class=note>Ничего не найдено</div>';return;}
+h+=d.items.map(function(it){return '<div class=row data-mag="'+esc(it.mag)+'"><span class=tag>'+esc(it.src)+'</span><span class=rname>'+esc(it.name)+'</span>'+(it.size?'<span class=meta>'+esc(it.size)+'</span>':'')+(it.seeds?'<span class=meta>🌱 '+it.seeds+'</span>':'')+'</div>';}).join('');
+box.innerHTML=h;
+[].forEach.call(box.querySelectorAll('.row'),function(r){r.onclick=function(){api('/api/add',{source:r.getAttribute('data-mag')}).then(poll);};});
+}).catch(function(){box.innerHTML='<div class=note>Ошибка поиска</div>';});}
+document.getElementById('go').onclick=doSearch;
+document.getElementById('q').addEventListener('keydown',function(e){if(e.key==='Enter')doSearch();});
+document.getElementById('mag').onclick=function(){var m=prompt('magnet:');if(m&&m.indexOf('magnet:')===0){api('/api/add',{source:m}).then(poll);}};
+function render(list){var box=document.getElementById('torrents');
+if(!list.length){box.innerHTML='<div class=note>Пусто. Найди торрент и кликни по строке.</div>';return;}
+box.innerHTML=list.map(function(t){
+var files=t.files.map(function(f){return '<label class=fin><input type=checkbox data-id='+t.id+' data-i='+f.i+(f.selected?' checked':'')+'> '+esc(f.name)+' <span class=meta>'+esc(f.size)+'</span></label>';}).join('');
+var first=t.files.filter(function(f){return f.selected;})[0];
+var wi=first?first.i:(t.files[0]?t.files[0].i:0);
+var bar=t.ready?t.progress:0;
+return '<div class=card><div class=tname>'+esc(t.name)+'</div><div class=tmeta>'+(t.ready?'⏬ '+t.progress+'% · '+esc(t.speed)+' · пиры '+t.peers:'⏳ ждём метаданные…')+'</div><div class=bar><div style=width:'+bar+'%></div></div><div class=files>'+files+'</div><div class=acts><button data-act=vlc data-id='+t.id+'>▶ VLC</button><button data-act=web data-id='+t.id+' data-i='+wi+'>▶ Браузер</button><button class=del data-act=del data-id='+t.id+'>✕ удалить</button></div></div>';
+}).join('');
+[].forEach.call(box.querySelectorAll('.fin input'),function(cb){cb.onchange=function(){var id=+cb.getAttribute('data-id');var idx=[].filter.call(box.querySelectorAll('.fin input[data-id="'+id+'"]'),function(x){return x.checked;}).map(function(x){return +x.getAttribute('data-i');});api('/api/select',{id:id,indices:idx});};});
+[].forEach.call(box.querySelectorAll('button[data-act]'),function(b){b.onclick=function(){var id=+b.getAttribute('data-id');var act=b.getAttribute('data-act');
+if(act==='vlc'){b.textContent='…';api('/api/vlc',{id:id}).then(function(d){b.textContent=d.error?('⚠ '+d.error):'▶ VLC';setTimeout(function(){b.textContent='▶ VLC';},2500);});}
+if(act==='web'){window.open(BASE+'/view/'+id+'/'+b.getAttribute('data-i'));}
+if(act==='del'){api('/api/remove',{id:id}).then(poll);}
+};});
+}
+function poll(){api('/api/status').then(render).catch(function(){});}
+poll();setInterval(poll,1500);
+</script></body></html>`;
+
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    let d = '';
+    req.on('data', c => { d += c; if (d.length > 1e5) req.destroy(); });
+    req.on('end', () => { try { resolve(d ? JSON.parse(d) : {}); } catch (e) { reject(e); } });
+    req.on('error', reject);
+  });
+}
+
+function makeWebServer(client, st, opts, cacheDir, base) {
+  return http.createServer((req, res) => {
+    Promise.resolve(webReq(req, res, client, st, opts, cacheDir, base)).catch(e => {
+      if (!res.headersSent) { res.statusCode = 500; res.end('error'); }
+      console.error('web:', e?.message || e);
+    });
+  });
+}
+
+async function webReq(req, res, client, st, opts, cacheDir, base) {
+  const u = new URL(req.url, 'http://127.0.0.1');
+  let p = u.pathname;
+  if (base) {
+    if (p !== base && !p.startsWith(base + '/')) { res.statusCode = 404; res.end('not found'); return; }
+    p = p.slice(base.length) || '/';
+  }
+  const json = (code, obj) => { res.statusCode = code; res.setHeader('Content-Type', 'application/json; charset=utf-8'); res.end(JSON.stringify(obj)); };
+
+  if (p === '/' || p === '') {
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.end(WEB_HTML.replace('__BASE__', base));
+    return;
+  }
+  if (p === '/api/search') {
+    const q = u.searchParams.get('q') || '';
+    const { items, notes } = await searchIndexers(q);
+    return json(200, { items, notes });
+  }
+  if (p === '/api/add' && req.method === 'POST') {
+    const b = await readBody(req);
+    const source = String(b.source || '');
+    if (!source) return json(400, { error: 'нужен source' });
+    const id = st.nextId++;
+    st.pending.push(id);
+    client.add(source, { path: cacheDir });
+    return json(200, { id });
+  }
+  if (p === '/api/status') {
+    const list = [...st.torrents.values()].map(e => ({
+      id: e.id,
+      name: e.t.name || '…',
+      ready: !!e.t.ready,
+      progress: Math.round((e.t.progress || 0) * 100),
+      speed: fmtBytes(e.t.downloadSpeed) + '/s',
+      peers: e.t._peers?.size ?? 0,
+      files: e.t.files
+        .map((f, i) => ({ i, name: f.path, size: fmtBytes(f.length), selected: e.sel.has(i), video: VIDEO_EXT.has(path.extname(f.name).toLowerCase()) }))
+        .filter(f => f.video),
+    }));
+    return json(200, list);
+  }
+  if (p === '/api/select' && req.method === 'POST') {
+    const b = await readBody(req);
+    const e = st.torrents.get(Number(b.id));
+    if (!e) return json(404, { error: 'нет торрента' });
+    e.t.files.forEach(f => f.deselect());
+    e.sel = new Set((b.indices || []).map(Number));
+    e.sel.forEach(i => e.t.files[i]?.select());
+    return json(200, { ok: true });
+  }
+  if (p === '/api/vlc' && req.method === 'POST') {
+    const b = await readBody(req);
+    const e = st.torrents.get(Number(b.id));
+    if (!e) return json(404, { error: 'нет торрента' });
+    const idx = [...e.sel];
+    if (!idx.length) return json(400, { error: 'выбери файлы' });
+    const vlcBin = detectVLCPath();
+    if (!vlcBin) return json(500, { error: 'VLC не найден' });
+    const subs = await collectSubtitles(e.t, idx);
+    const urls = idx.map(i => 'http://127.0.0.1:' + st.port + base + '/s/' + e.id + '/' + i);
+    const args = buildVLCArgs({ urls, caching: opts.caching, subs, startAt: 0 });
+    const v = spawn(vlcBin, args, { stdio: 'ignore' });
+    v.on('error', () => {});
+    st.vlc.push(v);
+    return json(200, { ok: true, subs: subs.length });
+  }
+  if (p === '/api/remove' && req.method === 'POST') {
+    const b = await readBody(req);
+    const id = Number(b.id);
+    const e = st.torrents.get(id);
+    if (e) { st.torrents.delete(id); try { await new Promise(r => e.t.destroy(r)); } catch {} }
+    return json(200, { ok: true });
+  }
+  const mS = /^\/s\/(\d+)\/(\d+)$/.exec(p);
+  if (mS) {
+    const e = st.torrents.get(Number(mS[1]));
+    const f = e?.t.files[Number(mS[2])];
+    if (!f) { res.statusCode = 404; res.end('not found'); return; }
+    return serveFile(req, res, f);
+  }
+  const mV = /^\/view\/(\d+)\/(\d+)$/.exec(p);
+  if (mV) {
+    const e = st.torrents.get(Number(mV[1]));
+    const f = e?.t.files[Number(mV[2])];
+    if (!f) { res.statusCode = 404; res.end('not found'); return; }
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.end('<!doctype html><meta charset=utf-8><title>' + esc(f.name) + '</title><style>body{margin:0;background:#000}</style><video controls autoplay src="' + base + '/s/' + mV[1] + '/' + mV[2] + '"></video>');
+    return;
+  }
+  res.statusCode = 404; res.end('not found');
+}
+
+async function startWeb(opts, srcArg) {
+  const cacheDir = DEFAULT_CACHE;
+  await ensureDir(cacheDir);
+  const client = new WebTorrent({ destroyStoreOnDestroy: true });
+  const token = opts.lan ? crypto.randomBytes(8).toString('hex') : '';
+  const base = token ? '/t/' + token : '';
+  const st = { torrents: new Map(), nextId: 1, vlc: [], port: 0, pending: [], autoSelect: !!srcArg };
+  client.on('torrent', t => {
+    const id = st.pending.shift();
+    if (id == null) return;
+    const sel = new Set();
+    if (st.autoSelect) {
+      st.autoSelect = false;
+      t.files.forEach((f, i) => { if (VIDEO_EXT.has(path.extname(f.name).toLowerCase())) sel.add(i); });
+    }
+    sel.forEach(i => t.files[i]?.select());
+    st.torrents.set(id, { id, t, sel });
+  });
+  const server = makeWebServer(client, st, opts, cacheDir, base);
+  const host = opts.lan ? '0.0.0.0' : '127.0.0.1';
+  st.port = await listenOnFreePort(server, host, opts.port);
+  const url = 'http://127.0.0.1:' + st.port + base + '/';
+  console.log('🌐 GUI: ' + url);
+  if (opts.lan) console.log('📱 В сети: http://' + localIP() + ':' + st.port + base + '/  (токен в URL)');
+  if (!opts.noOpen) {
+    const opener = process.platform === 'darwin' ? 'open' : 'xdg-open';
+    try { spawn(opener, [url], { stdio: 'ignore' }); } catch {}
+  }
+  if (srcArg) { st.pending.push(st.nextId++); client.add(srcArg, { path: cacheDir }); }
+  let cleaning = false;
+  async function shutdown(code = 0) {
+    if (cleaning) return; cleaning = true;
+    st.vlc.forEach(v => { try { v.kill(); } catch {} });
+    try { server.close(); } catch {}
+    try { await new Promise(r => client.destroy(r)); } catch {}
+    if (!opts.keepCache) await cleanCache(cacheDir);
+    process.exit(code);
+  }
+  process.on('SIGINT', () => shutdown(0));
+  process.on('SIGTERM', () => shutdown(0));
+  const NET_NOISE = /premature|aborted|EPIPE|ECONNRESET|ETIMEDOUT|socket|stream/i;
+  process.on('unhandledRejection', e => { const m = (e && (e.message || e)) + ''; if (!NET_NOISE.test(m)) console.error('unhandledRejection:', m); });
+  process.on('uncaughtException', e => { const m = (e && (e.message || e)) + ''; if (NET_NOISE.test(m)) return; console.error('uncaughtException:', m); console.error((e && e.stack || '').split('\\n').slice(0, 8).join('\\n')); });
+  console.log('Ctrl+C — выход.');
+}
+
 // ---- Main ----
 async function main() {
   const { opts, srcArg } = parseCli();
   watchFolder();
+  if (opts.web) return startWeb(opts, srcArg);
 
   const source = srcArg || await promptSource();
   let cacheDir;
