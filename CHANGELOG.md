@@ -1,0 +1,63 @@
+# Changelog / История изменений
+
+Формат — [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/), версии — [Semantic Versioning](https://semver.org/lang/ru/).
+
+## [1.4.2] — 2026-10-03
+**RU:** Русский поиск через Rutor.info.
+**EN:** Russian-language search via Rutor.info.
+- ➕ `searchRutor`: RSS `rutor.info/rss.php?search=` — находит по кириллице сразу («человек паук» → 26 результатов)
+- ➕ CLI принимает `https://…file.torrent` как источник
+- 🔀 Результаты Rutor всегда вверху списка, TPB — ниже
+- ➖ 1337x убран из дефолта (за Cloudflare), остался опциональной заметкой
+
+## [1.4.1] — 2026-10-03
+**RU:** Починен поиск индексаторов.
+**EN:** Indexer search fixed.
+- 🐛 TPB: RSS отдавал HTML вместо XML → парсер видел 0 результатов; теперь парсится страница поиска (magnet + имя + размер + сиды)
+- 🐛 1337x: подставной API-ключ → настоящий; кривой путь запроса; поле `magnetLink` вместо `magnet_link`
+- ➕ Авто-транслит кириллицы: «человек паук» → ищет и кириллицей, и `chelovek pauk`
+- ➕ Дедуп по btih, сортировка по сидам, в списке: `источник · имя · размер · 🌱сиды`
+- ➕ Честные заметки об ошибках источников (`⚠ 1337x: HTTP 403 (Cloudflare)`) вместо молчаливого «0 результатов»
+
+## [1.4.0] — 2026-10-03
+**RU:** Большой релиз: фиксы ревью + фичи.
+**EN:** Big release: review fixes + features.
+
+### Fixed
+- 🐛 `makeServer`: бесконечная рекурсия (мёртвая строка с `createServer`) удалена
+- 🐛 Суффиксные Range-запросы `bytes=-N` теперь корректные 206; битый range → 416
+- 🐛 Ctrl+C: VLC убивается (`vlc.kill()`), больше не остаётся зомби-процесс
+- 🐛 `uncaughtException` логируется и ведёт к корректному shutdown, а не глушится
+- 🐛 Имена файлов экранируются в HTML-индексе
+- 🐛 Magnet без пиров: таймаут метаданных 60 с с понятной ошибкой, вместо вечного висения
+- 🐛 `nameToIdx` — Map по индексу, а не по имени
+- 🔧 Промпт кэша предупреждает: папка кэша удаляется после выхода
+- 🔧 Фильтр по имени (подстрока/`/regex/`) был мёртвым — подключён
+- 🔧 `build/app.sh` читает версию из `package.json`
+- 🔧 Дефолтный `--network-caching` поднят 1500 → 3000
+
+### Added
+- 🌐 Стрим в браузер: страница с `<video>` на `/view/<i>`, `--no-vlc` без VLC
+- 🌐 `--lan`: слушать 0.0.0.0 + случайный токен в URL (смотреть с телефона/ТВ)
+- 🔎 Поиск торрентов в меню (TPB.party RSS + 1337x API) → magnet
+- 📺 Субтитры из торрента (`.srt/.ass/.ssa/.vtt`) → VLC через `--sub-file=`
+- ▶️ `--resume`: продолжение с прошлой позиции (`--start-time`), состояние в `~/.config/torrent-online/state.json`
+- 📦 CLI-режим без меню: `node wtui.js film.torrent|magnet:`
+- 📥 Watch-папка `~/Downloads/torrent-online-watch` — `.torrent` подхватываются в меню
+- 📊 Прогресс-строка: %, скорость, пиры
+- ✅ Проверка наличия VLC на старте с внятной ошибкой
+- ⚙️ Флаги: `--keep-cache`, `--port=<N>`, `--network-caching=<ms>`, `--help`
+- 📄 LICENSE (MIT), Dockerfile (headless-стрим на NAS), `torrent-online.desktop` для Linux
+
+### Changed
+- 🔁 `inquirer ^8` (не дружит с Node 22+) → `@inquirer/prompts ^7`
+- 🔒 `webtorrent` зафиксирован на `2.8.4`
+
+## [1.3.2] — 2025-09-28
+**RU:** Базовая версия: TUI-меню, стрим в VLC.
+**EN:** Baseline: TUI menu, VLC streaming.
+- Меню выбора `.torrent` / magnet
+- Стрим в VLC через локальный HTTP-сервер с Range-поддержкой
+- Кэш `~/Movies/WebTorrent`, удаление после выхода
+- Авто-поиск порта в диапазоне 8123..10122
+- Сборка `.app` для macOS (`build/app.sh`)
