@@ -45,7 +45,7 @@ RES_APP="${APP_ROOT}/Resources/app"
 DEPS="${HOME}/Library/Application Support/TorrentOnline"
 osascript <<OSA
 tell application "Terminal"
-  do script "/bin/zsh -l -c 'mkdir -p \"$DEPS\"; cd \"$DEPS\"; if [ ! -f \"$DEPS/node_modules/.installed\" ]; then cp \"$RES_APP/wtui.js\" \"$RES_APP/package.json\" \"$DEPS/\"; cd \"$DEPS\"; npm i --omit=dev && touch node_modules/.installed; fi; cd \"$DEPS\"; node wtui.js'"
+  do script "/bin/zsh -l -c 'mkdir -p \"$DEPS\"; cp \"$RES_APP/wtui.js\" \"$RES_APP/package.json\" \"$DEPS/\"; cd \"$DEPS\"; if [ ! -f \"$DEPS/node_modules/.installed\" ]; then npm i --omit=dev && touch node_modules/.installed; fi; cd \"$DEPS\"; node wtui.js'"
   activate
 end tell
 OSA
