@@ -5,6 +5,8 @@
 
 [Русский](#русский) · [English](#english)
 
+![Меню / Menu](docs/menu.png)
+
 ---
 
 # Русский
