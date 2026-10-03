@@ -790,11 +790,13 @@ async function webReq(req, res, client, st, opts, cacheDir, base) {
     const a = u.searchParams.get('a') || '0';
     const sb = u.searchParams.get('s');
     const url = 'http://127.0.0.1:' + st.port + base + '/s/' + mR[1] + '/' + mR[2];
-    const args = ['-hide_banner', '-loglevel', 'error', '-i', url, '-map', '0:v:0', '-map', '0:a:' + a, '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-max_muxing_queue_size', '9999'];
+    const args = ['-hide_banner', '-loglevel', 'error', '-rw_timeout', '30000000', '-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '5', '-i', url, '-map', '0:v:0', '-map', '0:a:' + a, '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-max_muxing_queue_size', '9999'];
     if (sb !== null && sb !== '') args.push('-map', '0:s:' + sb, '-c:s', 'mov_text');
     args.push('-f', 'mp4', '-movflags', 'frag_keyframe+empty_moov+default_base_moof', '-');
     res.setHeader('Content-Type', 'video/mp4');
-    const proc = spawn(ffmpeg, args, { stdio: ['ignore', 'pipe', 'ignore'] });
+    const proc = spawn(ffmpeg, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    let ffErr = 0;
+    proc.stderr.on('data', d => { if (ffErr < 3) { console.error('ffm:', String(d).trim().slice(0, 200)); ffErr++; } });
     proc.stdout.pipe(res);
     proc.on('error', () => { try { res.end(); } catch {} });
     req.on('close', () => { try { proc.kill('SIGKILL'); } catch {} });
@@ -814,7 +816,7 @@ async function webReq(req, res, client, st, opts, cacheDir, base) {
       'select{background:#1b1b1f;color:#ddd;border:1px solid #333;border-radius:6px;padding:4px;max-width:340px}' +
       'video{flex:1;width:100%;min-height:0;background:#000}</style>' +
       '<div class=bar><b>' + esc(f.name) + '</b><select id=a style=display:none></select><select id=s style=display:none></select><span id=n></span></div>' +
-      '<video id=v controls autoplay src="' + base + '/s/' + mV[1] + '/' + mV[2] + '"></video>' +
+      '<video id=v controls autoplay muted playsinline src="' + base + '/s/' + mV[1] + '/' + mV[2] + '"></video>' +
       '<script>var B=' + JSON.stringify(base) + ',ID=' + mV[1] + ',I=' + mV[2] + ';' +
       'var v=document.getElementById("v"),aS=document.getElementById("a"),sS=document.getElementById("s"),n=document.getElementById("n");' +
       'var tries=0;' +
@@ -827,8 +829,10 @@ async function webReq(req, res, client, st, opts, cacheDir, base) {
       'aS.value=A[0].a;aS.style.display="";' +
       'if(S.length){var o0=document.createElement("option");o0.value="";o0.textContent="без субтитров";sS.appendChild(o0);' +
       'S.forEach(function(t){var o=document.createElement("option");o.value=t.s;o.textContent="💬 "+(t.lang&&t.lang!=="und"?t.lang:"субтитры "+(t.s+1))+(t.title?" — "+t.title:"");sS.appendChild(o)});sS.style.display=""}' +
-      'var go=function(){var t=v.currentTime;v.src=B+"/remux/"+ID+"/"+I+"?a="+aS.value+(sS.value!==""?"&s="+sS.value:"");v.load();v.addEventListener("loadedmetadata",function once(){v.currentTime=t;v.removeEventListener("loadedmetadata",once)});v.play()};' +
+      'var go=function(){var t=v.currentTime;v.src=B+"/remux/"+ID+"/"+I+"?a="+aS.value+(sS.value!==""?"&s="+sS.value:"");v.load();v.addEventListener("loadedmetadata",function once(){v.currentTime=t;v.removeEventListener("loadedmetadata",once)});v.play().catch(function(){})};' +
       'aS.onchange=go;sS.onchange=go;go();' +
+      'v.addEventListener("playing",function(){n.textContent=""});v.addEventListener("volumechange",function(){if(!v.muted)n.title="звук включён"});' +
+      'setInterval(function(){fetch(B+"/api/status").then(function(r){return r.json()}).then(function(l){var t=l.find(function(x){return x.id===ID});if(t&&v.readyState<2)n.textContent="⏬ "+t.speed+" · пиры "+t.peers+(t.progress>0?" · "+t.progress+"%":"")}).catch(function(){})},2000);' +
       '}).catch(function(){if(tries++<15)setTimeout(load,4000)})};load();</script>');
     return;
   }
