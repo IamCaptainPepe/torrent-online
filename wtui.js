@@ -5,7 +5,9 @@ import { promises as fsp } from 'fs';
 import path from 'path';
 import os from 'os';
 import crypto from 'crypto';
-import { spawn, spawnSync } from 'child_process';
+import { spawn, spawnSync, execFile } from 'child_process';
+import { promisify } from 'util';
+const execFileP = promisify(execFile);
 import { fileURLToPath } from 'url';
 import { select, checkbox, input, confirm, Separator } from '@inquirer/prompts';
 import WebTorrent from 'webtorrent';
@@ -159,6 +161,14 @@ async function listenOnFreePort(server, host, fixedPort) {
 }
 
 // ---- VLC ----
+function detectFFBin(name) {
+  const cands = ['/opt/homebrew/bin/' + name, '/usr/local/bin/' + name, '/usr/bin/' + name];
+  for (const c of cands) if (fs.existsSync(c)) return c;
+  const r = spawnSync('which', [name], { encoding: 'utf8', timeout: 3000 });
+  const p = (r.stdout || '').trim();
+  return p && fs.existsSync(p) ? p : null;
+}
+
 function detectVLCPath() {
   const macVLC = '/Applications/VLC.app/Contents/MacOS/VLC';
   if (fs.existsSync(macVLC)) return macVLC;
@@ -716,13 +726,75 @@ async function webReq(req, res, client, st, opts, cacheDir, base) {
     if (!f) { res.statusCode = 404; res.end('not found'); return; }
     return serveFile(req, res, f);
   }
+  const mT = /^\/api\/tracks\/(\d+)\/(\d+)$/.exec(p);
+  if (mT) {
+    const e = st.torrents.get(Number(mT[1]));
+    const f = e?.t.files[Number(mT[2])];
+    if (!f) return json(404, { error: 'нет файла' });
+    const ffprobe = detectFFBin('ffprobe');
+    if (!ffprobe) return json(200, { ffmpeg: false, tracks: [] });
+    const url = 'http://127.0.0.1:' + st.port + base + '/s/' + mT[1] + '/' + mT[2];
+    try {
+      const { stdout } = await execFileP(ffprobe, ['-hide_banner', '-loglevel', 'error', '-print_format', 'json', '-show_streams', url], { maxBuffer: 8 * 1048576, timeout: 25000 });
+      const j = JSON.parse(stdout);
+      let ai = 0, si = 0;
+      const tracks = [], subs = [];
+      for (const s of (j.streams || [])) {
+        const lang = (s.tags && s.tags.language) || '';
+        const title = (s.tags && s.tags.title) || '';
+        if (s.codec_type === 'audio') tracks.push({ a: ai++, lang, title, codec: s.codec_name });
+        else if (s.codec_type === 'subtitle') subs.push({ s: si++, lang, title, codec: s.codec_name });
+      }
+      return json(200, { ffmpeg: true, tracks, subs });
+    } catch (e2) { return json(200, { ffmpeg: true, tracks: [], subs: [], error: String((e2 && e2.message) || e2).slice(0, 160) }); }
+  }
+  const mR = /^\/remux\/(\d+)\/(\d+)$/.exec(p);
+  if (mR) {
+    const e = st.torrents.get(Number(mR[1]));
+    const f = e?.t.files[Number(mR[2])];
+    if (!f) { res.statusCode = 404; res.end('not found'); return; }
+    const ffmpeg = detectFFBin('ffmpeg');
+    if (!ffmpeg) { res.statusCode = 500; res.end('ffmpeg не найден'); return; }
+    const a = u.searchParams.get('a') || '0';
+    const sb = u.searchParams.get('s');
+    const url = 'http://127.0.0.1:' + st.port + base + '/s/' + mR[1] + '/' + mR[2];
+    const args = ['-hide_banner', '-loglevel', 'error', '-i', url, '-map', '0:v:0', '-map', '0:a:' + a, '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-max_muxing_queue_size', '9999'];
+    if (sb !== null && sb !== '') args.push('-map', '0:s:' + sb, '-c:s', 'mov_text');
+    args.push('-f', 'mp4', '-movflags', 'frag_keyframe+empty_moov+default_base_moof', '-');
+    res.setHeader('Content-Type', 'video/mp4');
+    const proc = spawn(ffmpeg, args, { stdio: ['ignore', 'pipe', 'ignore'] });
+    proc.stdout.pipe(res);
+    proc.on('error', () => { try { res.end(); } catch {} });
+    req.on('close', () => { try { proc.kill('SIGKILL'); } catch {} });
+    res.on('close', () => { try { proc.kill('SIGKILL'); } catch {} });
+    return;
+  }
   const mV = /^\/view\/(\d+)\/(\d+)$/.exec(p);
   if (mV) {
     const e = st.torrents.get(Number(mV[1]));
     const f = e?.t.files[Number(mV[2])];
     if (!f) { res.statusCode = 404; res.end('not found'); return; }
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.end('<!doctype html><meta charset=utf-8><title>' + esc(f.name) + '</title><style>body{margin:0;background:#000}</style><video controls autoplay src="' + base + '/s/' + mV[1] + '/' + mV[2] + '"></video>');
+    res.end('<!doctype html><meta charset=utf-8><title>' + esc(f.name) + '</title>' +
+      '<style>body{margin:0;background:#000;color:#ddd;font:14px system-ui;display:flex;flex-direction:column;height:100vh;box-sizing:border-box}' +
+      '.bar{display:flex;gap:10px;align-items:center;padding:6px 10px;flex-wrap:wrap}' +
+      'select{background:#1b1b1f;color:#ddd;border:1px solid #333;border-radius:6px;padding:4px;max-width:340px}' +
+      'video{flex:1;width:100%;min-height:0;background:#000}</style>' +
+      '<div class=bar><b>' + esc(f.name) + '</b><select id=a style=display:none></select><select id=s style=display:none></select><span id=n></span></div>' +
+      '<video id=v controls autoplay src="' + base + '/s/' + mV[1] + '/' + mV[2] + '"></video>' +
+      '<script>var B=' + JSON.stringify(base) + ',ID=' + mV[1] + ',I=' + mV[2] + ';' +
+      'var v=document.getElementById("v"),aS=document.getElementById("a"),sS=document.getElementById("s"),n=document.getElementById("n");' +
+      'fetch(B+"/api/tracks/"+ID+"/"+I).then(function(r){return r.json()}).then(function(d){' +
+      'if(d.error)n.textContent="⚠ "+d.error;' +
+      'var A=d.tracks||[],S=d.subs||[];' +
+      'if(!d.ffmpeg||A.length<2){return;}' +
+      'A.forEach(function(t){var o=document.createElement("option");o.value=t.a;o.textContent="♪ "+(t.lang&&t.lang!=="und"?t.lang:"дорожка "+(t.a+1))+(t.title?" — "+t.title:"")+" ["+t.codec+"]";aS.appendChild(o)});' +
+      'aS.value=A[0].a;aS.style.display="";' +
+      'if(S.length){var o0=document.createElement("option");o0.value="";o0.textContent="без субтитров";sS.appendChild(o0);' +
+      'S.forEach(function(t){var o=document.createElement("option");o.value=t.s;o.textContent="💬 "+(t.lang&&t.lang!=="und"?t.lang:"субтитры "+(t.s+1))+(t.title?" — "+t.title:"");sS.appendChild(o)});sS.style.display=""}' +
+      'var go=function(){var t=v.currentTime;v.src=B+"/remux/"+ID+"/"+I+"?a="+aS.value+(sS.value!==""?"&s="+sS.value:"");v.load();v.addEventListener("loadedmetadata",function once(){v.currentTime=t;v.removeEventListener("loadedmetadata",once)});v.play()};' +
+      'aS.onchange=go;sS.onchange=go;go();' +
+      '}).catch(function(){})</script>');
     return;
   }
   res.statusCode = 404; res.end('not found');
