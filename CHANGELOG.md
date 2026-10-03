@@ -2,6 +2,12 @@
 
 Формат — [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/), версии — [Semantic Versioning](https://semver.org/lang/ru/).
 
+## [1.4.3] — 2026-10-03
+**RU:** .app распространяется как артефакт релиза.
+**EN:** The .app ships as a release artifact.
+- ➕ `build/app.sh`: в .app больше не бандлится `node_modules` — зависимости ставятся при первом запуске в `~/Library/Application Support/TorrentOnline` (один раз, потом мгновенный старт)
+- ➕ Артефакт релиза: `TorrentOnline.app.zip` — качай и запускай без `git clone`
+
 ## [1.4.2] — 2026-10-03
 **RU:** Русский поиск через Rutor.info.
 **EN:** Russian-language search via Rutor.info.

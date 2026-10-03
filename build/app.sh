@@ -12,11 +12,10 @@ echo "[1/5] Чистим dist…"
 rm -rf "dist"
 mkdir -p "${RES_DIR}" "${MACOS_DIR}"
 
-echo "[2/5] Кладём код и прод-зависимости…"
+echo "[2/5] Кладём код (зависимости ставятся при первом запуске)…"
 rm -rf build/stage
 mkdir -p build/stage
-cp wtui.js package.json build/stage/
-npm i --omit=dev --prefix build/stage
+cp wtui.js package.json package-lock.json build/stage/
 cp -R build/stage/* "${RES_DIR}/"
 
 echo "[3/5] Info.plist и запускалка…"
@@ -43,9 +42,10 @@ set -euo pipefail
 SELF_DIR="$(cd "$(dirname "$0")" && pwd)"
 APP_ROOT="${SELF_DIR}/.."
 RES_APP="${APP_ROOT}/Resources/app"
+DEPS="${HOME}/Library/Application Support/TorrentOnline"
 osascript <<OSA
 tell application "Terminal"
-  do script "/bin/zsh -l -c 'cd \"${RES_APP}\"; node wtui.js'"
+  do script "/bin/zsh -l -c 'cd \"$DEPS\"; if [ ! -f \"$DEPS/node_modules/.installed\" ]; then cp \"$RES_APP/wtui.js\" \"$RES_APP/package.json\" \"$DEPS/\"; cd \"$DEPS\"; npm i --omit=dev && touch node_modules/.installed; fi; cd \"$DEPS\"; node wtui.js'"
   activate
 end tell
 OSA
