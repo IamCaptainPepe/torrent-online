@@ -257,42 +257,67 @@ function makeServer(torrent, base) {
 }
 
 // ---- Поиск индексаторов ----
+const TRANSLIT = { а:'a',б:'b',в:'v',г:'g',д:'d',е:'e',ё:'e',ж:'zh',з:'z',и:'i',й:'y',к:'k',л:'l',м:'m',н:'n',о:'o',п:'p',р:'r',с:'s',т:'t',у:'u',ф:'f',х:'kh',ц:'ts',ч:'ch',ш:'sh',щ:'shch',ъ:'',ы:'y',ь:'',э:'e',ю:'yu',я:'ya' };
+function translit(s) { return s.toLowerCase().split('').map(c => TRANSLIT[c] ?? c).join(''); }
+function btihKey(mag) { const m = /btih:([0-9a-fA-F]{40}|[0-9a-fA-F]{32})/.exec(mag); return m ? m[1].toLowerCase() : mag.slice(0, 90); }
+
 async function search1337x(q) {
-  const r = await fetch(`https://1337x.st/api/v1/search/${encodeURIComponent(q)}/1/time/`, {
-    headers: { 'x-api-key': '1337x-api-key', 'user-agent': UA },
-    signal: AbortSignal.timeout(8000),
+  const r = await fetch(`https://1337x.st/api/v1/search/${encodeURIComponent(q)}/1/1/`, {
+    headers: { 'x-api-key': 'sk1337x73871873371873', 'user-agent': UA, accept: 'application/json' },
+    signal: AbortSignal.timeout(9000),
   });
-  if (!r.ok) return [];
-  const j = await r.json();
+  const text = await r.text();
+  if (!r.ok) throw new Error(`1337x: HTTP ${r.status}${/Just a moment/.test(text) ? ' (Cloudflare)' : ''}`);
+  let j;
+  try { j = JSON.parse(text); } catch { throw new Error('1337x: не JSON'); }
   const out = [];
   for (const it of j.data || []) {
-    const mag = it.magnet_link || it.torrent_magnet;
-    if (mag && mag.startsWith('magnet:')) out.push({ name: it.name, mag });
+    const mag = it.magnetLink || it.magnet_link || it.torrent_magnet;
+    if (mag && mag.startsWith('magnet:'))
+      out.push({ name: String(it.name || ''), mag, size: String(it.size || ''), seeds: Number(it.seeders) || 0, src: '1337x' });
   }
   return out;
 }
 
-async function searchTPB(q) {
-  const r = await fetch(`https://tpb.party/s/?q=${encodeURIComponent(q)}&page=0&sort=0&type=rss0`, {
+async function searchTPB(q, host = 'https://tpb.party') {
+  const r = await fetch(`${host}/s/?q=${encodeURIComponent(q)}&page=0&sort=0`, {
     headers: { 'user-agent': UA },
-    signal: AbortSignal.timeout(8000),
+    signal: AbortSignal.timeout(9000),
   });
-  if (!r.ok) return [];
-  const xml = await r.text();
+  if (!r.ok) throw new Error(`TPB: HTTP ${r.status}`);
+  const html = await r.text();
   const out = [];
-  for (const item of xml.split('<item>').slice(1, 26)) {
-    const title = decodeXml(/<title>([^<]*)<\/title>/.exec(item)?.[1] || '');
-    const mag = /magnet:[^"'<\s&]+/.exec(item)?.[0] || '';
-    if (title && mag) out.push({ name: title, mag });
+  for (const row of html.split('<tr>').slice(1)) {
+    const magRaw = /href="(magnet:[^"]+)"/.exec(row)?.[1];
+    const name = decodeXml(/title="Details for ([^"]*)"/.exec(row)?.[1] || '');
+    if (!magRaw || !name) continue;
+    const mag = decodeXml(magRaw);
+    const cells = [...row.matchAll(/<td[^>]*align="right"[^>]*>([^<]*)</g)]
+      .map(m => decodeXml(m[1]).replace(/&nbsp;/g, ' ').trim());
+    out.push({ name, mag, size: cells[0] || '', seeds: Number(cells[1]) || 0, src: 'TPB' });
+    if (out.length >= 25) break;
   }
   return out;
 }
 
 async function searchIndexers(q) {
-  let res = [];
-  try { res = await search1337x(q); } catch {}
-  if (!res.length) { try { res = await searchTPB(q); } catch {} }
-  return res;
+  const queries = [...new Set([q.trim(), translit(q.trim())].filter(Boolean))];
+  const results = [];
+  const notes = [];
+  const jobs = [];
+  for (const qq of queries) {
+    jobs.push(searchTPB(qq).then(rs => results.push(...rs), e => notes.push(e.message)));
+    jobs.push(search1337x(qq).then(rs => results.push(...rs), e => notes.push(e.message)));
+  }
+  await Promise.allSettled(jobs);
+  const seen = new Set();
+  const out = [];
+  for (const it of results) {
+    const k = btihKey(it.mag);
+    if (!seen.has(k)) { seen.add(k); out.push(it); }
+  }
+  out.sort((a, b) => b.seeds - a.seeds);
+  return { items: out.slice(0, 40), notes: [...new Set(notes)] };
 }
 
 // ---- Промпты ----
@@ -315,15 +340,19 @@ async function promptSource() {
 
   const src = await select({ message: 'Источник', choices, pageSize: 15 });
   if (src === 'SEARCH') {
-    const q = await input({ message: 'Запрос' });
+    const q = await input({ message: 'Запрос (по-английски; транслит ищем сам)' });
     process.stdout.write('Ищу… ');
-    const found = await searchIndexers(q);
-    process.stdout.write(`\r${found.length} результатов        \n`);
-    if (!found.length) throw new Error('Ничего не найдено (индексаторы недоступны?)');
+    const { items, notes } = await searchIndexers(q);
+    process.stdout.write(`\r${items.length} результатов        \n`);
+    for (const n of notes.slice(0, 3)) console.log(`⚠ ${n}`);
+    if (!items.length) throw new Error('Ничего не найдено. Индексаторы англоязычные: «spider man», а не «человек паук»');
     return await select({
       message: 'Найденное',
       pageSize: 15,
-      choices: found.map(r => ({ name: r.name.slice(0, 90), value: r.mag })),
+      choices: items.map(r => ({
+        name: `${r.src} · ${r.name.slice(0, 64)}${r.size ? ' · ' + r.size : ''}${r.seeds ? ' · 🌱' + r.seeds : ''}`,
+        value: r.mag,
+      })),
     });
   }
   if (src === 'MAGNET') {
@@ -551,5 +580,5 @@ async function main() {
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
 if (isMain) main().catch(err => { console.error('Ошибка:', err?.stack || err?.message || err); process.exit(1); });
 
-export { makeServer, naturalCompare, fmtBytes, esc, buildVLCArgs, contentTypeByExt };
+export { makeServer, naturalCompare, fmtBytes, esc, buildVLCArgs, contentTypeByExt, searchIndexers, searchTPB, translit };
 
