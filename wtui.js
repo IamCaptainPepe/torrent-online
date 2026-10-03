@@ -641,6 +641,7 @@ function makeWebServer(client, st, opts, cacheDir, base) {
 
 async function webReq(req, res, client, st, opts, cacheDir, base) {
   const u = new URL(req.url, 'http://127.0.0.1');
+  const ensureSel = (e, i) => { const f = e?.t.files[i]; if (f && !e.sel.has(i)) { e.sel.add(i); try { f.select(); } catch {} } };
   let p = u.pathname;
   if (base) {
     if (p !== base && !p.startsWith(base + '/')) { res.statusCode = 404; res.end('not found'); return; }
@@ -724,6 +725,7 @@ async function webReq(req, res, client, st, opts, cacheDir, base) {
     const e = st.torrents.get(Number(mS[1]));
     const f = e?.t.files[Number(mS[2])];
     if (!f) { res.statusCode = 404; res.end('not found'); return; }
+    ensureSel(e, Number(mS[2]));
     return serveFile(req, res, f);
   }
   const mT = /^\/api\/tracks\/(\d+)\/(\d+)$/.exec(p);
@@ -731,6 +733,7 @@ async function webReq(req, res, client, st, opts, cacheDir, base) {
     const e = st.torrents.get(Number(mT[1]));
     const f = e?.t.files[Number(mT[2])];
     if (!f) return json(404, { error: 'нет файла' });
+    ensureSel(e, Number(mT[2]));
     const ffprobe = detectFFBin('ffprobe');
     if (!ffprobe) return json(200, { ffmpeg: false, tracks: [] });
     const url = 'http://127.0.0.1:' + st.port + base + '/s/' + mT[1] + '/' + mT[2];
@@ -746,13 +749,14 @@ async function webReq(req, res, client, st, opts, cacheDir, base) {
         else if (s.codec_type === 'subtitle') subs.push({ s: si++, lang, title, codec: s.codec_name });
       }
       return json(200, { ffmpeg: true, tracks, subs });
-    } catch (e2) { return json(200, { ffmpeg: true, tracks: [], subs: [], error: String((e2 && e2.message) || e2).slice(0, 160) }); }
+    } catch (e2) { return json(200, { ffmpeg: true, tracks: [], subs: [], retry: true }); }
   }
   const mR = /^\/remux\/(\d+)\/(\d+)$/.exec(p);
   if (mR) {
     const e = st.torrents.get(Number(mR[1]));
     const f = e?.t.files[Number(mR[2])];
     if (!f) { res.statusCode = 404; res.end('not found'); return; }
+    ensureSel(e, Number(mR[2]));
     const ffmpeg = detectFFBin('ffmpeg');
     if (!ffmpeg) { res.statusCode = 500; res.end('ffmpeg не найден'); return; }
     const a = u.searchParams.get('a') || '0';
@@ -774,6 +778,7 @@ async function webReq(req, res, client, st, opts, cacheDir, base) {
     const e = st.torrents.get(Number(mV[1]));
     const f = e?.t.files[Number(mV[2])];
     if (!f) { res.statusCode = 404; res.end('not found'); return; }
+    ensureSel(e, Number(mV[2]));
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.end('<!doctype html><meta charset=utf-8><title>' + esc(f.name) + '</title>' +
       '<style>body{margin:0;background:#000;color:#ddd;font:14px system-ui;display:flex;flex-direction:column;height:100vh;box-sizing:border-box}' +
@@ -784,7 +789,9 @@ async function webReq(req, res, client, st, opts, cacheDir, base) {
       '<video id=v controls autoplay src="' + base + '/s/' + mV[1] + '/' + mV[2] + '"></video>' +
       '<script>var B=' + JSON.stringify(base) + ',ID=' + mV[1] + ',I=' + mV[2] + ';' +
       'var v=document.getElementById("v"),aS=document.getElementById("a"),sS=document.getElementById("s"),n=document.getElementById("n");' +
-      'fetch(B+"/api/tracks/"+ID+"/"+I).then(function(r){return r.json()}).then(function(d){' +
+      'var tries=0;' +
+      'var load=function(){fetch(B+"/api/tracks/"+ID+"/"+I).then(function(r){return r.json()}).then(function(d){' +
+      'if(d.retry&&tries++<15){n.textContent="⏳ готовлю файл к стриму…";setTimeout(load,4000);return;}' +
       'if(d.error)n.textContent="⚠ "+d.error;' +
       'var A=d.tracks||[],S=d.subs||[];' +
       'if(!d.ffmpeg||A.length<2){return;}' +
@@ -794,7 +801,7 @@ async function webReq(req, res, client, st, opts, cacheDir, base) {
       'S.forEach(function(t){var o=document.createElement("option");o.value=t.s;o.textContent="💬 "+(t.lang&&t.lang!=="und"?t.lang:"субтитры "+(t.s+1))+(t.title?" — "+t.title:"");sS.appendChild(o)});sS.style.display=""}' +
       'var go=function(){var t=v.currentTime;v.src=B+"/remux/"+ID+"/"+I+"?a="+aS.value+(sS.value!==""?"&s="+sS.value:"");v.load();v.addEventListener("loadedmetadata",function once(){v.currentTime=t;v.removeEventListener("loadedmetadata",once)});v.play()};' +
       'aS.onchange=go;sS.onchange=go;go();' +
-      '}).catch(function(){})</script>');
+      '}).catch(function(){if(tries++<15)setTimeout(load,4000)})};load();</script>');
     return;
   }
   res.statusCode = 404; res.end('not found');
@@ -814,6 +821,7 @@ async function startWeb(opts, srcArg) {
     const dup = [...st.torrents.values()].find(e => e.t.infoHash === t.infoHash);
     if (dup) { try { t.destroy(); } catch {} return; }
     t.files.forEach(f => f.deselect()); // webtorrent по умолчанию выбирает все файлы
+    try { t.fileSelector = (tt, index, file) => (file._selections && file._selections.length ? 2 : 0); } catch {}
     const sel = new Set();
     const vids = t.files.map((f, i) => ({ f, i })).filter(x => VIDEO_EXT.has(path.extname(x.f.name).toLowerCase()));
     if (st.autoSelect) {
