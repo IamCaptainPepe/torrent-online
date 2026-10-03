@@ -470,6 +470,7 @@ async function addTorrent(client, source, cacheDir) {
       META_TIMEOUT_MS
     );
     client.add(source, { path: cacheDir }, t => {
+      t.files.forEach(f => f.deselect()); // не качаем всё подряд до выбора пользователя
       if (t.ready) { clearTimeout(to); return resolve(t); }
       const spin = setInterval(() => {
         process.stdout.write(`\r⏳ Метаданные: пиры ${(t.peers?.length ?? 0)}, получено ${fmtBytes(t.received)}   `);
@@ -740,6 +741,7 @@ async function startWeb(opts, srcArg) {
     if (id == null) return;
     const dup = [...st.torrents.values()].find(e => e.t.infoHash === t.infoHash);
     if (dup) { try { t.destroy(); } catch {} return; }
+    t.files.forEach(f => f.deselect()); // webtorrent по умолчанию выбирает все файлы
     const sel = new Set();
     const vids = t.files.map((f, i) => ({ f, i })).filter(x => VIDEO_EXT.has(path.extname(x.f.name).toLowerCase()));
     if (st.autoSelect) {
