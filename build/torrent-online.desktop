@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=TorrentOnline
+Comment=Стрим торрента в VLC / браузер
+Exec=bash -lc 'cd "%h" && node wtui.js'
+Terminal=true
+Categories=AudioVideo;Player;
+Keywords=torrent;magnet;vlc;stream;

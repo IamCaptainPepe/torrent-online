@@ -6,6 +6,8 @@ APP_DIR="dist/${APP_NAME}.app"
 RES_DIR="${APP_DIR}/Contents/Resources/app"
 MACOS_DIR="${APP_DIR}/Contents/MacOS"
 
+APP_VERSION="$(node -p "require(\"./package.json\").version")"
+
 echo "[1/5] Чистим dist…"
 rm -rf "dist"
 mkdir -p "${RES_DIR}" "${MACOS_DIR}"
@@ -18,7 +20,7 @@ npm i --omit=dev --prefix build/stage
 cp -R build/stage/* "${RES_DIR}/"
 
 echo "[3/5] Info.plist и запускалка…"
-cat > "${APP_DIR}/Contents/Info.plist" <<'PLIST'
+cat > "${APP_DIR}/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -27,8 +29,8 @@ cat > "${APP_DIR}/Contents/Info.plist" <<'PLIST'
   <key>CFBundleName</key>                <string>TorrentOnline</string>
   <key>CFBundleDisplayName</key>        <string>TorrentOnline</string>
   <key>CFBundleIdentifier</key>         <string>com.captainpepe.torrentonline</string>
-  <key>CFBundleVersion</key>            <string>1.3.2</string>
-  <key>CFBundleShortVersionString</key> <string>1.3.2</string>
+  <key>CFBundleVersion</key>            <string>${APP_VERSION}</string>
+  <key>CFBundleShortVersionString</key> <string>${APP_VERSION}</string>
   <key>CFBundlePackageType</key>        <string>APPL</string>
   <key>LSMinimumSystemVersion</key>     <string>11.0</string>
 </dict>
