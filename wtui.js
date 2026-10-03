@@ -194,6 +194,15 @@ function contentTypeByExt(ext) {
 
 function makeServer(torrent, base) {
   return http.createServer((req, res) => {
+    try {
+      handleReq(req, res, torrent, base);
+    } catch (e) {
+      if (!res.headersSent) { res.statusCode = 500; res.end('stream error'); }
+      console.error('server:', e?.stack || e);
+    }
+  });
+}
+function handleReq(req, res, torrent, base) {
     const u = new URL(req.url, 'http://127.0.0.1');
     let p = u.pathname;
     if (base) {
@@ -253,7 +262,6 @@ function makeServer(torrent, base) {
       res.setHeader('Content-Length', total);
       file.createReadStream().pipe(res);
     }
-  });
 }
 
 // ---- Поиск индексаторов ----
@@ -622,6 +630,7 @@ async function main() {
     const msg = (e && (e.message || e)) + '';
     if (NET_NOISE.test(msg)) return;
     console.error('uncaughtException:', msg);
+    console.error((e && e.stack || '').split('\n').slice(0, 8).join('\n'));
     shutdown('uncaught', 1);
   });
   if (vlc) vlc.on('exit', () => shutdown('VLC exit'));
