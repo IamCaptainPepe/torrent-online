@@ -58,7 +58,13 @@ node wtui.js "https://example.com/file.torrent"
 - Проверка VLC на старте с внятной ошибкой
 
 ## .app (macOS)
-`.app` открывает **Terminal** и запускает скрипт.
+Скачай готовый `TorrentOnline.app.zip` из [релизов](../../releases), распакуй и перетащи в `/Applications`.
+Приложение не подписано, поэтому macOS повесит карантин — сними его один раз:
+```bash
+xattr -dr com.apple.quarantine /Applications/TorrentOnline.app
+open /Applications/TorrentOnline.app
+```
+Свои сборка (`.app` открывает **Terminal** и запускает скрипт):
 ```bash
 ./build/app.sh
 open dist/TorrentOnline.app
@@ -147,7 +153,13 @@ Default cache: `~/Movies/WebTorrent`. **Note: the cache folder is deleted on exi
 - VLC presence checked at startup with a clear error
 
 ## .app (macOS)
-The `.app` opens **Terminal** and runs the script.
+Download the prebuilt `TorrentOnline.app.zip` from [releases](../../releases), unzip and drag it to `/Applications`.
+The app is unsigned, so macOS adds a quarantine flag — clear it once:
+```bash
+xattr -dr com.apple.quarantine /Applications/TorrentOnline.app
+open /Applications/TorrentOnline.app
+```
+Build it yourself (the `.app` opens **Terminal** and runs the script):
 ```bash
 ./build/app.sh
 open dist/TorrentOnline.app
