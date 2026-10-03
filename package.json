@@ -1,6 +1,6 @@
 {
   "name": "torrent-online",
-  "version": "1.5.2",
+  "version": "1.5.3",
   "type": "module",
   "description": "Stream .torrent / magnet to VLC or browser — torrent streaming for macOS/Linux without a torrent client. Стрим торрентов в VLC или браузер.",
   "keywords": [

@@ -551,6 +551,12 @@ button:hover{background:#2a3c58}
 .bar div{height:100%;background:linear-gradient(90deg,#3b82f6,#7fd4ff);border-radius:3px}
 .fin{display:block;padding:4px 2px;cursor:pointer;color:var(--mut);font-size:14px}
 .fin input{margin-right:8px;accent-color:#3b82f6}
+.fin .play{margin-left:6px;padding:0 8px;font-size:12px}
+.picks{margin:6px 0 2px}
+.picks button{font-size:12px;padding:3px 10px}
+.fin .play{margin-left:6px;padding:0 8px;font-size:12px}
+.picks{margin:6px 0 2px}
+.picks button{font-size:12px;padding:3px 10px}
 .acts{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap}
 .acts .del{margin-left:auto;color:#ff8a8a;border-color:#4a2a33;background:#2a1c22}
 h3{color:var(--mut);font-size:14px;margin:18px 0 4px;font-weight:500}
@@ -574,29 +580,33 @@ var h='';(d.notes||[]).forEach(function(n){h+='<div class=note>⚠ '+esc(n)+'</d
 if(!d.items.length){box.innerHTML=h+'<div class=note>Ничего не найдено</div>';return;}
 h+=d.items.map(function(it){return '<div class=row data-mag="'+esc(it.mag)+'"><span class=tag>'+esc(it.src)+'</span><span class=rname>'+esc(it.name)+'</span>'+(it.size?'<span class=meta>'+esc(it.size)+'</span>':'')+(it.seeds?'<span class=meta>🌱 '+it.seeds+'</span>':'')+'</div>';}).join('');
 box.innerHTML=h;
-[].forEach.call(box.querySelectorAll('.row'),function(r){r.onclick=function(){api('/api/add',{source:r.getAttribute('data-mag')}).then(poll);};});
+[].forEach.call(box.querySelectorAll('.row'),function(r){r.onclick=function(){api('/api/add',{source:r.getAttribute('data-mag')}).then(function(){poll();toTorrents();});};});
 }).catch(function(){box.innerHTML='<div class=note>Ошибка поиска</div>';});}
 document.getElementById('go').onclick=doSearch;
 document.getElementById('q').addEventListener('keydown',function(e){if(e.key==='Enter')doSearch();});
-document.getElementById('mag').onclick=function(){var m=prompt('magnet:');if(m&&m.indexOf('magnet:')===0){api('/api/add',{source:m}).then(poll);}};
-document.getElementById('tpath').onclick=function(){var p=prompt('Путь к .torrent, напр. /Users/you/Downloads/torrent.torrent');if(p&&p.trim()){api('/api/add',{source:p.trim()}).then(poll);}};
+document.getElementById('mag').onclick=function(){var m=prompt('magnet:');if(m&&m.indexOf('magnet:')===0){api('/api/add',{source:m}).then(function(){poll();toTorrents();});}};
+document.getElementById('tpath').onclick=function(){var p=prompt('Путь к .torrent, напр. /Users/you/Downloads/torrent.torrent');if(p&&p.trim()){api('/api/add',{source:p.trim()}).then(function(){poll();toTorrents();});}};
 function render(list){var box=document.getElementById('torrents');
 if(!list.length){box.innerHTML='<div class=note>Пусто. Найди торрент и кликни по строке.</div>';return;}
 box.innerHTML=list.map(function(t){
-var files=t.files.map(function(f){return '<label class=fin><input type=checkbox data-id='+t.id+' data-i='+f.i+(f.selected?' checked':'')+'> '+esc(f.name)+' <span class=meta>'+esc(f.size)+'</span></label>';}).join('');
+var files=t.files.map(function(f){return '<label class=fin><input type=checkbox data-id='+t.id+' data-i='+f.i+(f.selected?' checked':'')+'> '+esc(f.name)+' <span class=meta>'+esc(f.size)+'</span> <button class=play data-act=web data-id='+t.id+' data-i='+f.i+'>▶</button></label>';}).join('');
 var first=t.files.filter(function(f){return f.selected;})[0];
-var wi=first?first.i:(t.files[0]?t.files[0].i:0);
+var wi=first?first.i:0;
+var nSel=t.files.filter(function(f){return f.selected;}).length;
 var bar=t.ready?t.progress:0;
-return '<div class=card><div class=tname>'+esc(t.name)+'</div><div class=tmeta>'+(t.ready?'⏬ '+t.progress+'% · '+esc(t.speed)+' · пиры '+t.peers:'⏳ ждём метаданные…')+'</div><div class=bar><div style=width:'+bar+'%></div></div><div class=files>'+files+'</div><div class=acts><button data-act=vlc data-id='+t.id+'>▶ VLC</button><button data-act=web data-id='+t.id+' data-i='+wi+'>▶ Браузер</button><button class=del data-act=del data-id='+t.id+'>✕ удалить</button></div></div>';
+var hint=(t.ready&&nSel===0)?'<div class=note>Отметь серии галочками — ▶ VLC / ▶ Браузер запустят выбранное. Одна серия стартует автоматически.</div>':'';
+return '<div class=card><div class=tname>'+esc(t.name)+'</div><div class=tmeta>'+(t.ready?'⏬ '+t.progress+'% · '+esc(t.speed)+' · пиры '+t.peers:'⏳ ждём метаданные…')+'</div><div class=bar><div style=width:'+bar+'%></div></div>'+(t.files.length>1?'<div class=picks><button data-act=all data-id='+t.id+'>выбрать все</button><button data-act=none data-id='+t.id+'>снять все</button></div>':'')+'<div class=files>'+files+'</div>'+hint+'<div class=acts><button data-act=vlc data-id='+t.id+'>▶ VLC'+(nSel?' ('+nSel+')':'')+'</button><button data-act=web data-id='+t.id+' data-i='+wi+'>▶ Браузер</button><button class=del data-act=del data-id='+t.id+'>✕ удалить</button></div></div>';
 }).join('');
 [].forEach.call(box.querySelectorAll('.fin input'),function(cb){cb.onchange=function(){var id=+cb.getAttribute('data-id');var idx=[].filter.call(box.querySelectorAll('.fin input[data-id="'+id+'"]'),function(x){return x.checked;}).map(function(x){return +x.getAttribute('data-i');});api('/api/select',{id:id,indices:idx});};});
 [].forEach.call(box.querySelectorAll('button[data-act]'),function(b){b.onclick=function(){var id=+b.getAttribute('data-id');var act=b.getAttribute('data-act');
 if(act==='vlc'){b.textContent='…';api('/api/vlc',{id:id}).then(function(d){b.textContent=d.error?('⚠ '+d.error):'▶ VLC';setTimeout(function(){b.textContent='▶ VLC';},2500);});}
 if(act==='web'){window.open(BASE+'/view/'+id+'/'+b.getAttribute('data-i'));}
 if(act==='del'){api('/api/remove',{id:id}).then(poll);}
+if(act==='all'||act==='none'){var idx=act==='all'?[].map.call(box.querySelectorAll('.fin input[data-id="'+id+'"]'),function(x){return +x.getAttribute('data-i');}):[];api('/api/select',{id:id,indices:idx}).then(poll);}
 };});
 }
 function poll(){api('/api/status').then(render).catch(function(){});}
+function toTorrents(){var el=document.getElementById('torrents');el.scrollIntoView({behavior:'smooth',block:'start'});}
 poll();setInterval(poll,1500);
 </script></body></html>`;
 
@@ -641,9 +651,15 @@ async function webReq(req, res, client, st, opts, cacheDir, base) {
     const b = await readBody(req);
     const source = String(b.source || '');
     if (!source) return json(400, { error: 'нужен source' });
+    const btih = (source.match(/btih:([0-9a-f]{40})/i) || [])[1];
+    if (btih) {
+      const ex = [...st.torrents.values()].find(e => e.t.infoHash === btih.toLowerCase());
+      if (ex) return json(200, { id: ex.id, dup: true });
+    }
     const id = st.nextId++;
     st.pending.push(id);
-    client.add(source, { path: cacheDir });
+    try { client.add(source, { path: cacheDir }); }
+    catch (e) { st.pending.pop(); return json(400, { error: String((e && e.message) || e) }); }
     return json(200, { id });
   }
   if (p === '/api/status') {
@@ -719,12 +735,18 @@ async function startWeb(opts, srcArg) {
   const base = token ? '/t/' + token : '';
   const st = { torrents: new Map(), nextId: 1, vlc: [], port: 0, pending: [], autoSelect: !!srcArg };
   client.on('torrent', t => {
+    t.on('error', () => {});
     const id = st.pending.shift();
     if (id == null) return;
+    const dup = [...st.torrents.values()].find(e => e.t.infoHash === t.infoHash);
+    if (dup) { try { t.destroy(); } catch {} return; }
     const sel = new Set();
+    const vids = t.files.map((f, i) => ({ f, i })).filter(x => VIDEO_EXT.has(path.extname(x.f.name).toLowerCase()));
     if (st.autoSelect) {
       st.autoSelect = false;
-      t.files.forEach((f, i) => { if (VIDEO_EXT.has(path.extname(f.name).toLowerCase())) sel.add(i); });
+      vids.forEach(x => sel.add(x.i));
+    } else if (vids.length === 1) {
+      sel.add(vids[0].i); // фильм один — авто-старт
     }
     sel.forEach(i => t.files[i]?.select());
     st.torrents.set(id, { id, t, sel });
@@ -751,7 +773,7 @@ async function startWeb(opts, srcArg) {
   }
   process.on('SIGINT', () => shutdown(0));
   process.on('SIGTERM', () => shutdown(0));
-  const NET_NOISE = /premature|aborted|EPIPE|ECONNRESET|ETIMEDOUT|socket|stream/i;
+  const NET_NOISE = /premature|aborted|EPIPE|ECONNRESET|ETIMEDOUT|socket|stream|duplicate torrent/i;
   process.on('unhandledRejection', e => { const m = (e && (e.message || e)) + ''; if (!NET_NOISE.test(m)) console.error('unhandledRejection:', m); });
   process.on('uncaughtException', e => { const m = (e && (e.message || e)) + ''; if (NET_NOISE.test(m)) return; console.error('uncaughtException:', m); console.error((e && e.stack || '').split('\\n').slice(0, 8).join('\\n')); });
   console.log('Ctrl+C — выход.');
