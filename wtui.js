@@ -565,6 +565,7 @@ button:hover{background:#2a3c58}
 .fin .play{margin-left:6px;padding:0 8px;font-size:12px}
 .picks{margin:6px 0 2px}
 .picks button{font-size:12px;padding:3px 10px}
+body.drop{outline:3px dashed #3b82f6;outline-offset:-10px;background:rgba(59,130,246,.06)}
 .fin .play{margin-left:6px;padding:0 8px;font-size:12px}
 .picks{margin:6px 0 2px}
 .picks button{font-size:12px;padding:3px 10px}
@@ -575,7 +576,7 @@ video{width:100vw;height:100vh;background:#000;display:block;margin:0}
 </style></head><body>
 <header>🦀 <b>TorrentOnline</b></header>
 <div class=wrap>
-<div class=search><input id=q placeholder="Поиск: пацаны 4 сезон · breaking bad · magnet:…" autocomplete=off><button id=go>Искать</button><button id=mag>+ magnet</button><button id=tpath>+ .torrent файл</button></div>
+<div class=search><input id=q placeholder="Поиск: пацаны 4 сезон · breaking bad · magnet:…" autocomplete=off><button id=go>Искать</button><button id=mag>+ magnet</button><button id=tpath>+ .torrent файл</button><input type=file id=tt accept=".torrent,application/x-bittorrent" style=display:none></div>
 <div id=notes></div>
 <div id=results></div>
 <h3>Торренты</h3>
@@ -596,7 +597,18 @@ box.innerHTML=h;
 document.getElementById('go').onclick=doSearch;
 document.getElementById('q').addEventListener('keydown',function(e){if(e.key==='Enter')doSearch();});
 document.getElementById('mag').onclick=function(){var m=prompt('magnet:');if(m&&m.indexOf('magnet:')===0){api('/api/add',{source:m}).then(function(){poll();toTorrents();});}};
-document.getElementById('tpath').onclick=function(){var p=prompt('Путь к .torrent, напр. /Users/you/Downloads/torrent.torrent');if(p&&p.trim()){api('/api/add',{source:p.trim()}).then(function(){poll();toTorrents();});}};
+document.getElementById('tpath').onclick=function(){document.getElementById('tt').click();};
+document.getElementById('tt').onchange=function(){if(this.files&&this.files[0])uploadFile(this.files[0]);this.value='';};
+function uploadFile(f){var nb=document.getElementById('notes');nb.innerHTML='<div class=note>⏳ Загружаю '+esc(f.name)+'…</div>';
+fetch(BASE+'/api/add-file',{method:'POST',headers:{'content-type':'application/octet-stream'},body:f}).then(function(r){return r.json()}).then(function(d){nb.innerHTML=d.error?'<div class=note>⚠ '+esc(d.error)+'</div>':'';poll();toTorrents();}).catch(function(){nb.innerHTML='<div class=note>⚠ Ошибка загрузки</div>';});}
+document.addEventListener('dragover',function(e){e.preventDefault();document.body.classList.add('drop');});
+document.addEventListener('dragleave',function(e){if(e.target===document.body||e.relatedTarget===null)document.body.classList.remove('drop');});
+document.addEventListener('drop',function(e){e.preventDefault();document.body.classList.remove('drop');
+var fs=e.dataTransfer.files||[];
+for(var i=0;i<fs.length;i++){if(/\.torrent$/i.test(fs[i].name)){uploadFile(fs[i]);return;}}
+var t=(e.dataTransfer.getData('text/uri-list')||'')+(e.dataTransfer.getData('text/plain')||'');
+var mm=t.match(/magnet:\?[^\s,]+/);if(mm){api('/api/add',{source:'magnet:'+mm[0]}).then(function(){poll();toTorrents();});}
+});
 function render(list){var box=document.getElementById('torrents');
 if(!list.length){box.innerHTML='<div class=note>Пусто. Найди торрент и кликни по строке.</div>';return;}
 box.innerHTML=list.map(function(t){
@@ -658,6 +670,22 @@ async function webReq(req, res, client, st, opts, cacheDir, base) {
     const q = u.searchParams.get('q') || '';
     const { items, notes } = await searchIndexers(q);
     return json(200, { items, notes });
+  }
+  if (p === '/api/add-file' && req.method === 'POST') {
+    const chunks = [];
+    let size = 0;
+    await new Promise((resolve, reject) => {
+      req.on('data', c => { chunks.push(c); size += c.length; if (size > 5e6) { req.destroy(); reject(new Error('файл слишком большой')); } });
+      req.on('end', resolve);
+      req.on('error', reject);
+    });
+    const buf = Buffer.concat(chunks);
+    if (!buf.length) return json(400, { error: 'пустой файл' });
+    const id = st.nextId++;
+    st.pending.push(id);
+    try { client.add(buf, { path: cacheDir }); }
+    catch (e) { st.pending.pop(); return json(400, { error: String((e && e.message) || e) }); }
+    return json(200, { id });
   }
   if (p === '/api/add' && req.method === 'POST') {
     const b = await readBody(req);
