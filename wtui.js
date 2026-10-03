@@ -259,6 +259,39 @@ function makeServer(torrent, base) {
 // ---- Поиск индексаторов ----
 const TRANSLIT = { а:'a',б:'b',в:'v',г:'g',д:'d',е:'e',ё:'e',ж:'zh',з:'z',и:'i',й:'y',к:'k',л:'l',м:'m',н:'n',о:'o',п:'p',р:'r',с:'s',т:'t',у:'u',ф:'f',х:'kh',ц:'ts',ч:'ch',ш:'sh',щ:'shch',ъ:'',ы:'y',ь:'',э:'e',ю:'yu',я:'ya' };
 function translit(s) { return s.toLowerCase().split('').map(c => TRANSLIT[c] ?? c).join(''); }
+
+// RU->EN словарь популярных названий для TPB/1337x
+const RU_EN = {
+  'пацаны': 'the boys', 'во все тяжкие': 'breaking bad', 'лучше звонка сола': 'better call saul',
+  'игра престолов': 'game of thrones', 'странные дела': 'stranger things', 'ведьмак': 'the witcher',
+  'ходячие мертвецы': 'the walking dead', 'теория большого взрыва': 'the big bang theory',
+  'клиника': 'scrubs', 'друзья': 'friends', 'голодные игры': 'the hunger games',
+  'мистер робот': 'mr robot', 'шерлок': 'sherlock', 'южный парк': 'south park',
+  'гриффины': 'family guy', 'симпсоны': 'the simpsons', 'футурама': 'futurama',
+  'рик и морти': 'rick and morty', 'арчер': 'archer', 'американская история ужасов': 'american horror story',
+  'сумерки': 'twilight', 'властелин колец': 'the lord of the rings', 'хоббит': 'the hobbit',
+  'гарри поттер': 'harry potter', 'человек-паук': 'spider-man', 'бэтмен': 'batman',
+  'супермен': 'superman', 'мстители': 'avengers', 'флэш': 'the flash', 'стрела': 'arrow',
+  'тёмный рыцарь': 'the dark knight', 'диванный псих': 'divan', 'дэдпул': 'deadpool',
+  'стражи галактики': 'guardians of the galaxy', 'человек-муравей': 'ant-man',
+  'доктор стрэндж': 'doctor strange', 'веном': 'venom', 'джон уик': 'john wick',
+  'терминатор': 'terminator', 'матрица': 'the matrix', 'чужой': 'alien',
+  'хищник': 'predator', 'трансформеры': 'transformers', 'форсаж': 'fast and furious',
+  'крид': 'creed', 'рокки': 'rocky', 'рамбо': 'rambo', 'неудержимые': 'the expendables',
+  'миссия': 'mission impossible', 'индиана джонс': 'indiana jones', 'парк юрского периода': 'jurassic park',
+  'аватар': 'avatar', 'титаник': 'titanic', 'оно': 'it', 'сияние': 'the shining',
+  'мир дикого запада': 'westworld', 'наркос': 'narcos', 'элита': 'elite',
+  'бумажный дом': 'la casa de papel', 'декстер': 'dexter', 'монк': 'monk',
+  'последний богатырь': 'the last hero', 'чучело': 'scarecrow', 'фонари': 'lanterns',
+  'гангстерленд': 'mobland', 'сердце пармы': 'heart of parma', 'метро 2033': 'metro',
+};
+function ruToEn(q) {
+  let s = q.toLowerCase().replace(/[«»\/]/g, ' ');
+  for (const k of Object.keys(RU_EN).sort((a, b) => b.length - a.length))
+    s = s.split(k).join(RU_EN[k]);
+  s = s.replace(/(\d+)\s*сезон/g, (m, n) => 's' + n.padStart(2, '0')).replace(/серия\b/g, 'episode');
+  return s.replace(/\s+/g, ' ').trim();
+}
 function btihKey(mag) { const m = /btih:([0-9a-fA-F]{40}|[0-9a-fA-F]{32})/.exec(mag); return m ? m[1].toLowerCase() : mag.slice(0, 90); }
 
 async function search1337x(q) {
@@ -321,7 +354,7 @@ async function searchRutor(q) {
 }
 
 async function searchIndexers(q) {
-  const queries = [...new Set([q.trim(), translit(q.trim())].filter(Boolean))];
+  const queries = [...new Set([q.trim(), translit(q.trim()), ruToEn(q.trim())].filter(Boolean))];
   const results = [];
   const notes = [];
   const jobs = [];
