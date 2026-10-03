@@ -328,7 +328,7 @@ async function search1337x(q) {
 }
 
 async function searchTPB(q, host = 'https://tpb.party') {
-  const r = await fetch(`${host}/search/${encodeURIComponent(q)}/0/99/200/`, {
+  const r = await fetch(`${host}/search/${encodeURIComponent(q)}/0/99/0/`, {
     headers: { 'user-agent': UA },
     signal: AbortSignal.timeout(9000),
   });
@@ -349,21 +349,21 @@ async function searchTPB(q, host = 'https://tpb.party') {
 }
 
 async function searchRutor(q) {
-  const r = await fetch(`https://rutor.info/rss.php?search=${encodeURIComponent(q)}`, {
+  const r = await fetch(`https://rutor.info/search/0/0/0/0/${encodeURIComponent(q)}/`, {
     headers: { 'user-agent': UA },
     signal: AbortSignal.timeout(9000),
   });
   if (!r.ok) throw new Error(`Rutor: HTTP ${r.status}`);
-  const xml = await r.text();
-  const VIDEO = /фильм|сериал|мультип|аниме|телевизор|документ|спорт/i;
+  const html = await r.text();
   const out = [];
-  for (const item of xml.split('<item>').slice(1, 26)) {
-    const title = decodeXml(/<title>([^<]*)<\/title>/.exec(item)?.[1] || '')
-      .replace(/\s*\([^()]*\.torrent\)\s*$/, '');
-    const cat = decodeXml(/<description>([^<]*)<\/description>/.exec(item)?.[1] || '');
-    const link = /<link>([^<]+)<\/link>/.exec(item)?.[1] || '';
-    if (title && link.includes('download.php') && VIDEO.test(cat))
-      out.push({ name: title, mag: link, size: '', seeds: 0, src: 'Rutor' });
+  for (const row of html.split('<tr class="gai">').slice(1, 26)) {
+    const magRaw = /href="(magnet:[^"]+)"/.exec(row)?.[1];
+    const name = decodeXml(/<a href="\/torrent\/\d+\/[^"]*">([^<]+)<\/a>/.exec(row)?.[1] || '');
+    if (!magRaw || !name) continue;
+    const size = decodeXml(/<td align="right">([\d.,]+)&nbsp;(GB|MB|KB|TB)/.exec(row)?.[0].replace('<td align="right">', '') || '')
+      .replace(/&nbsp;/g, ' ').trim();
+    const seeds = Number(decodeXml(/<td align="center">\s*<img[^>]*u\.png[^>]*>\s*([\d.,]+)/.exec(row)?.[1] || '0').replace(/[^\d]/g, '')) || 0;
+    out.push({ name, mag: decodeXml(magRaw), size, seeds, src: 'Rutor' });
   }
   return out;
 }
