@@ -47,7 +47,7 @@ function parseCli() {
   }
   if (positional.length > 1) { console.error('Только один источник: .torrent или magnet:'); process.exit(1); }
   const srcArg = positional[0] || null;
-  if (srcArg && !srcArg.startsWith('magnet:') && !srcArg.endsWith('.torrent')) {
+  if (srcArg && !srcArg.startsWith('magnet:') && !/^https?:\/\//.test(srcArg) && !srcArg.endsWith('.torrent')) {
     console.error('Нужен файл .torrent или ссылка magnet:'); process.exit(1);
   }
   return { opts, srcArg };
@@ -300,11 +300,30 @@ async function searchTPB(q, host = 'https://tpb.party') {
   return out;
 }
 
+async function searchRutor(q) {
+  const r = await fetch(`https://rutor.info/rss.php?search=${encodeURIComponent(q)}`, {
+    headers: { 'user-agent': UA },
+    signal: AbortSignal.timeout(9000),
+  });
+  if (!r.ok) throw new Error(`Rutor: HTTP ${r.status}`);
+  const xml = await r.text();
+  const out = [];
+  for (const item of xml.split('<item>').slice(1, 26)) {
+    const title = decodeXml(/<title>([^<]*)<\/title>/.exec(item)?.[1] || '')
+      .replace(/\s*\([^()]*\.torrent\)\s*$/, '');
+    const link = /<link>([^<]+)<\/link>/.exec(item)?.[1] || '';
+    if (title && link.includes('download.php'))
+      out.push({ name: title, mag: link, size: '', seeds: 0, src: 'Rutor' });
+  }
+  return out;
+}
+
 async function searchIndexers(q) {
   const queries = [...new Set([q.trim(), translit(q.trim())].filter(Boolean))];
   const results = [];
   const notes = [];
   const jobs = [];
+  jobs.push(searchRutor(queries[0]).then(rs => results.push(...rs), e => notes.push(e.message)));
   for (const qq of queries) {
     jobs.push(searchTPB(qq).then(rs => results.push(...rs), e => notes.push(e.message)));
     jobs.push(search1337x(qq).then(rs => results.push(...rs), e => notes.push(e.message)));
@@ -316,7 +335,7 @@ async function searchIndexers(q) {
     const k = btihKey(it.mag);
     if (!seen.has(k)) { seen.add(k); out.push(it); }
   }
-  out.sort((a, b) => b.seeds - a.seeds);
+  out.sort((a, b) => (a.src === 'Rutor' ? 0 : 1) - (b.src === 'Rutor' ? 0 : 1) || b.seeds - a.seeds);
   return { items: out.slice(0, 40), notes: [...new Set(notes)] };
 }
 
@@ -334,18 +353,18 @@ async function promptSource() {
     for (const f of files) choices.push({ name: path.basename(f), value: f });
   }
   choices.push(new Separator());
-  choices.push({ name: '🔎 Поиск (1337x / TPB)', value: 'SEARCH' });
+  choices.push({ name: '🔎 Поиск (Rutor / TPB)', value: 'SEARCH' });
   choices.push({ name: 'Вставить magnet-ссылку', value: 'MAGNET' });
   choices.push({ name: 'Указать путь к .torrent', value: 'PATH' });
 
   const src = await select({ message: 'Источник', choices, pageSize: 15 });
   if (src === 'SEARCH') {
-    const q = await input({ message: 'Запрос (по-английски; транслит ищем сам)' });
+    const q = await input({ message: 'Запрос (по-русски — Rutor, по-английски — TPB)' });
     process.stdout.write('Ищу… ');
     const { items, notes } = await searchIndexers(q);
     process.stdout.write(`\r${items.length} результатов        \n`);
     for (const n of notes.slice(0, 3)) console.log(`⚠ ${n}`);
-    if (!items.length) throw new Error('Ничего не найдено. Индексаторы англоязычные: «spider man», а не «человек паук»');
+    if (!items.length) throw new Error('Ничего не найдено');
     return await select({
       message: 'Найденное',
       pageSize: 15,
