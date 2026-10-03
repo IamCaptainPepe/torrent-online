@@ -275,7 +275,7 @@ function serveFile(req, res, file) {
 const TRANSLIT = { а:'a',б:'b',в:'v',г:'g',д:'d',е:'e',ё:'e',ж:'zh',з:'z',и:'i',й:'y',к:'k',л:'l',м:'m',н:'n',о:'o',п:'p',р:'r',с:'s',т:'t',у:'u',ф:'f',х:'kh',ц:'ts',ч:'ch',ш:'sh',щ:'shch',ъ:'',ы:'y',ь:'',э:'e',ю:'yu',я:'ya' };
 function translit(s) { return s.toLowerCase().split('').map(c => TRANSLIT[c] ?? c).join(''); }
 
-// RU->EN словарь популярных названий для TPB/1337x
+// RU->EN словарь популярных названий для TPB
 const RU_EN = {
   'пацаны': 'the boys', 'во все тяжкие': 'breaking bad', 'лучше звонка сола': 'better call saul',
   'игра престолов': 'game of thrones', 'странные дела': 'stranger things', 'ведьмак': 'the witcher',
@@ -309,31 +309,21 @@ function ruToEn(q) {
 }
 function btihKey(mag) { const m = /btih:([0-9a-fA-F]{40}|[0-9a-fA-F]{32})/.exec(mag); return m ? m[1].toLowerCase() : mag.slice(0, 90); }
 
-async function search1337x(q) {
-  const r = await fetch(`https://1337x.st/api/v1/search/${encodeURIComponent(q)}/1/1/1/0/`, {
-    headers: { 'x-api-key': 'sk1337x73871873371873', 'user-agent': UA, accept: 'application/json' },
-    signal: AbortSignal.timeout(9000),
-  });
-  const text = await r.text();
-  if (!r.ok) throw new Error(`1337x: HTTP ${r.status}${/Just a moment/.test(text) ? ' (Cloudflare)' : ''}`);
-  let j;
-  try { j = JSON.parse(text); } catch { throw new Error('1337x: не JSON'); }
-  const out = [];
-  for (const it of j.data || []) {
-    const mag = it.magnetLink || it.magnet_link || it.torrent_magnet;
-    if (mag && mag.startsWith('magnet:'))
-      out.push({ name: String(it.name || ''), mag, size: String(it.size || ''), seeds: Number(it.seeders) || 0, src: '1337x' });
-  }
-  return out;
-}
 
-async function searchTPB(q, host = 'https://tpb.party') {
-  const r = await fetch(`${host}/search/${encodeURIComponent(q)}/0/99/0/`, {
-    headers: { 'user-agent': UA },
-    signal: AbortSignal.timeout(9000),
-  });
-  if (!r.ok) throw new Error(`TPB: HTTP ${r.status}`);
-  const html = await r.text();
+async function searchTPB(q, host = '') {
+  const hosts = ['https://tpb.party', 'https://piratebay.live'];
+  let html = '', lastErr = new Error('TPB: нет ответа');
+  for (const h of (host ? [host] : hosts)) {
+    try {
+      const r = await fetch(`${h}/search/${encodeURIComponent(q)}/0/99/0/`, {
+        headers: { 'user-agent': UA },
+        signal: AbortSignal.timeout(9000),
+      });
+      if (r.ok) { html = await r.text(); lastErr = null; break; }
+      lastErr = new Error(`TPB: HTTP ${r.status}`);
+    } catch (e) { lastErr = e; }
+  }
+  if (lastErr) throw lastErr;
   const out = [];
   for (const row of html.split('<tr>').slice(1)) {
     const magRaw = /href="(magnet:[^"]+)"/.exec(row)?.[1];
@@ -376,7 +366,6 @@ async function searchIndexers(q) {
   jobs.push(searchRutor(queries[0]).then(rs => results.push(...rs), e => notes.push(e.message)));
   for (const qq of queries) {
     jobs.push(searchTPB(qq).then(rs => results.push(...rs), e => notes.push(e.message)));
-    jobs.push(search1337x(qq).then(rs => results.push(...rs), e => notes.push(e.message)));
   }
   await Promise.allSettled(jobs);
   const seen = new Set();
@@ -569,7 +558,7 @@ video{width:100vw;height:100vh;background:#000;display:block;margin:0}
 </style></head><body>
 <header>🦀 <b>TorrentOnline</b></header>
 <div class=wrap>
-<div class=search><input id=q placeholder="Поиск: пацаны 4 сезон · breaking bad · magnet:…" autocomplete=off><button id=go>Искать</button><button id=mag>+ magnet</button></div>
+<div class=search><input id=q placeholder="Поиск: пацаны 4 сезон · breaking bad · magnet:…" autocomplete=off><button id=go>Искать</button><button id=mag>+ magnet</button><button id=tpath>+ .torrent файл</button></div>
 <div id=notes></div>
 <div id=results></div>
 <h3>Торренты</h3>
@@ -590,6 +579,7 @@ box.innerHTML=h;
 document.getElementById('go').onclick=doSearch;
 document.getElementById('q').addEventListener('keydown',function(e){if(e.key==='Enter')doSearch();});
 document.getElementById('mag').onclick=function(){var m=prompt('magnet:');if(m&&m.indexOf('magnet:')===0){api('/api/add',{source:m}).then(poll);}};
+document.getElementById('tpath').onclick=function(){var p=prompt('Путь к .torrent, напр. /Users/you/Downloads/torrent.torrent');if(p&&p.trim()){api('/api/add',{source:p.trim()}).then(poll);}};
 function render(list){var box=document.getElementById('torrents');
 if(!list.length){box.innerHTML='<div class=note>Пусто. Найди торрент и кликни по строке.</div>';return;}
 box.innerHTML=list.map(function(t){
