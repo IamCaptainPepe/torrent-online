@@ -1,11 +1,40 @@
 {
   "name": "torrent-online",
-  "version": "1.4.3",
-  "private": true,
+  "version": "1.4.4",
   "type": "module",
+  "description": "Stream .torrent / magnet to VLC or browser — torrent streaming for macOS/Linux without a torrent client. Стрим торрентов в VLC или браузер.",
+  "keywords": [
+    "torrent",
+    "magnet",
+    "streaming",
+    "vlc",
+    "webtorrent",
+    "macos",
+    "linux",
+    "cli",
+    "rutor",
+    "piratebay"
+  ],
+  "license": "MIT",
+  "author": "IamCaptainPepe",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/IamCaptainPepe/torrent-online.git"
+  },
+  "homepage": "https://github.com/IamCaptainPepe/torrent-online#readme",
+  "bugs": {
+    "url": "https://github.com/IamCaptainPepe/torrent-online/issues"
+  },
   "bin": {
     "torrent-online": "./wtui.js"
   },
+  "files": [
+    "wtui.js",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "docs/menu.png"
+  ],
   "scripts": {
     "start": "node wtui.js"
   },
