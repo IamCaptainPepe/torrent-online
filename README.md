@@ -13,6 +13,14 @@
 
 ## Быстрый старт
 ```bash
+npx torrent-online
+```
+Глобально один раз:
+```bash
+npm i -g torrent-online && torrent-online
+```
+Из исходников:
+```bash
 git clone https://github.com/IamCaptainPepe/torrent-online.git
 cd torrent-online
 npm i
@@ -92,7 +100,15 @@ docker run -p 8123:8123 torrent-online node wtui.js "magnet:?xt=..." --lan --no-
 
 # English
 
-## Quick start
+## Quick Start
+```bash
+npx torrent-online
+```
+Install globally:
+```bash
+npm i -g torrent-online && torrent-online
+```
+From source:
 ```bash
 git clone https://github.com/IamCaptainPepe/torrent-online.git
 cd torrent-online
