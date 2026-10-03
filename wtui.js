@@ -476,7 +476,7 @@ async function addTorrent(client, source, cacheDir) {
     client.add(source, { path: cacheDir }, t => {
       if (t.ready) { clearTimeout(to); return resolve(t); }
       const spin = setInterval(() => {
-        process.stdout.write(`\r⏳ Метаданные: пиры ${t.peers.length}, получено ${fmtBytes(t.received)}   `);
+        process.stdout.write(`\r⏳ Метаданные: пиры ${(t.peers?.length ?? 0)}, получено ${fmtBytes(t.received)}   `);
       }, 1000);
       t.once('ready', () => { clearInterval(spin); process.stdout.write('\x1b[K'); clearTimeout(to); resolve(t); });
     });
@@ -487,7 +487,7 @@ async function addTorrent(client, source, cacheDir) {
 function startProgress(torrent) {
   const t = setInterval(() => {
     process.stdout.write(
-      `\r⏬ ${(torrent.progress * 100).toFixed(1)}% · ${fmtBytes(torrent.downloadSpeed)}/s · пиры: ${torrent.peers.length}   `
+      `\r⏬ ${(torrent.progress * 100).toFixed(1)}% · ${fmtBytes(torrent.downloadSpeed)}/s · пиры: ${(torrent._peers?.size ?? 0)}   `
     );
   }, 1000);
   return () => { clearInterval(t); process.stdout.write('\x1b[K\n'); };
