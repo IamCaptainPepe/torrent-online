@@ -262,7 +262,7 @@ function translit(s) { return s.toLowerCase().split('').map(c => TRANSLIT[c] ?? 
 function btihKey(mag) { const m = /btih:([0-9a-fA-F]{40}|[0-9a-fA-F]{32})/.exec(mag); return m ? m[1].toLowerCase() : mag.slice(0, 90); }
 
 async function search1337x(q) {
-  const r = await fetch(`https://1337x.st/api/v1/search/${encodeURIComponent(q)}/1/1/`, {
+  const r = await fetch(`https://1337x.st/api/v1/search/${encodeURIComponent(q)}/1/1/1/0/`, {
     headers: { 'x-api-key': 'sk1337x73871873371873', 'user-agent': UA, accept: 'application/json' },
     signal: AbortSignal.timeout(9000),
   });
@@ -280,7 +280,7 @@ async function search1337x(q) {
 }
 
 async function searchTPB(q, host = 'https://tpb.party') {
-  const r = await fetch(`${host}/s/?q=${encodeURIComponent(q)}&page=0&sort=0`, {
+  const r = await fetch(`${host}/search/${encodeURIComponent(q)}/0/99/200/`, {
     headers: { 'user-agent': UA },
     signal: AbortSignal.timeout(9000),
   });
@@ -307,12 +307,14 @@ async function searchRutor(q) {
   });
   if (!r.ok) throw new Error(`Rutor: HTTP ${r.status}`);
   const xml = await r.text();
+  const VIDEO = /фильм|сериал|мультип|аниме|телевизор|документ|спорт/i;
   const out = [];
   for (const item of xml.split('<item>').slice(1, 26)) {
     const title = decodeXml(/<title>([^<]*)<\/title>/.exec(item)?.[1] || '')
       .replace(/\s*\([^()]*\.torrent\)\s*$/, '');
+    const cat = decodeXml(/<description>([^<]*)<\/description>/.exec(item)?.[1] || '');
     const link = /<link>([^<]+)<\/link>/.exec(item)?.[1] || '';
-    if (title && link.includes('download.php'))
+    if (title && link.includes('download.php') && VIDEO.test(cat))
       out.push({ name: title, mag: link, size: '', seeds: 0, src: 'Rutor' });
   }
   return out;
