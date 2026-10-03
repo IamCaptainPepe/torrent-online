@@ -780,6 +780,7 @@ async function webReq(req, res, client, st, opts, cacheDir, base) {
     } catch (e2) { return json(200, { ffmpeg: true, tracks: [], subs: [], retry: true }); }
   }
   const mR = /^\/remux\/(\d+)\/(\d+)$/.exec(p);
+  if (mR && req.method === 'HEAD') { res.statusCode = 200; res.setHeader('Content-Type', 'video/mp4'); res.end(); return; }
   if (mR) {
     const e = st.torrents.get(Number(mR[1]));
     const f = e?.t.files[Number(mR[2])];
@@ -797,7 +798,26 @@ async function webReq(req, res, client, st, opts, cacheDir, base) {
     const proc = spawn(ffmpeg, args, { stdio: ['ignore', 'pipe', 'pipe'] });
     let ffErr = 0;
     proc.stderr.on('data', d => { if (ffErr < 3) { console.error('ffm:', String(d).trim().slice(0, 200)); ffErr++; } });
-    proc.stdout.pipe(res);
+    // пребуфер: копим ~2 МБ выхода ffmpeg, чтобы браузер стартанул с запасом, а не по кусочкам
+    const PRE = 2 * 1048576;
+    const chunks = [];
+    let buffered = 0, piping = false;
+    const startPipe = () => {
+      if (piping) return;
+      piping = true;
+      proc.stdout.removeListener('data', onData);
+      for (const c of chunks) res.write(c);
+      chunks.length = 0;
+      proc.stdout.pipe(res);
+    };
+    const onData = c => {
+      if (piping) return;
+      chunks.push(c); buffered += c.length;
+      if (buffered >= PRE) startPipe();
+    };
+    proc.stdout.on('data', onData);
+    proc.stdout.on('end', () => { if (!piping) { for (const c of chunks) res.write(c); chunks.length = 0; } try { res.end(); } catch {} });
+    setTimeout(startPipe, 5000);
     proc.on('error', () => { try { res.end(); } catch {} });
     req.on('close', () => { try { proc.kill('SIGKILL'); } catch {} });
     res.on('close', () => { try { proc.kill('SIGKILL'); } catch {} });
@@ -809,6 +829,7 @@ async function webReq(req, res, client, st, opts, cacheDir, base) {
     const f = e?.t.files[Number(mV[2])];
     if (!f) { res.statusCode = 404; res.end('not found'); return; }
     ensureSel(e, Number(mV[2]));
+    const webFriendly = /\.(mp4|m4v|webm|m4a)$/i.test(f.name);
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.end('<!doctype html><meta charset=utf-8><title>' + esc(f.name) + '</title>' +
       '<style>body{margin:0;background:#000;color:#ddd;font:14px system-ui;display:flex;flex-direction:column;height:100vh;box-sizing:border-box}' +
@@ -819,14 +840,16 @@ async function webReq(req, res, client, st, opts, cacheDir, base) {
       '<video id=v controls autoplay muted playsinline src="' + base + '/s/' + mV[1] + '/' + mV[2] + '"></video>' +
       '<script>var B=' + JSON.stringify(base) + ',ID=' + mV[1] + ',I=' + mV[2] + ';' +
       'var v=document.getElementById("v"),aS=document.getElementById("a"),sS=document.getElementById("s"),n=document.getElementById("n");' +
+      'var MF=' + (webFriendly ? 1 : 0) + ';' +
       'var tries=0;' +
       'var load=function(){fetch(B+"/api/tracks/"+ID+"/"+I).then(function(r){return r.json()}).then(function(d){' +
       'if(d.retry&&tries++<15){n.textContent="⏳ готовлю файл к стриму…";setTimeout(load,4000);return;}' +
       'if(d.error)n.textContent="⚠ "+d.error;' +
       'var A=d.tracks||[],S=d.subs||[];' +
-      'if(!d.ffmpeg||A.length<2){return;}' +
+      'if(!d.ffmpeg){return;}' +
+      'if(A.length<2&&!S.length&&MF){return;}' +
       'A.forEach(function(t){var o=document.createElement("option");o.value=t.a;o.textContent="♪ "+(t.lang&&t.lang!=="und"?t.lang:"дорожка "+(t.a+1))+(t.title?" — "+t.title:"")+" ["+t.codec+"]";aS.appendChild(o)});' +
-      'aS.value=A[0].a;aS.style.display="";' +
+      'if(A.length>1){aS.value=A[0].a;aS.style.display=""}' +
       'if(S.length){var o0=document.createElement("option");o0.value="";o0.textContent="без субтитров";sS.appendChild(o0);' +
       'S.forEach(function(t){var o=document.createElement("option");o.value=t.s;o.textContent="💬 "+(t.lang&&t.lang!=="und"?t.lang:"субтитры "+(t.s+1))+(t.title?" — "+t.title:"");sS.appendChild(o)});sS.style.display=""}' +
       'var go=function(){var t=v.currentTime;v.src=B+"/remux/"+ID+"/"+I+"?a="+aS.value+(sS.value!==""?"&s="+sS.value:"");v.load();v.addEventListener("loadedmetadata",function once(){v.currentTime=t;v.removeEventListener("loadedmetadata",once)});v.play().catch(function(){})};' +
