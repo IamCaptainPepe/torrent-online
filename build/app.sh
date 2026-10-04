@@ -87,16 +87,58 @@ if [ ! -d "${DEPS}/node_modules/webtorrent" ] || [ "${OLD}" != "${VER}" ]; then
   fi
   printf '%s\n' "${VER}" > "${DEPS}/.app-version"
 fi
-if ! curl -sf -o /dev/null --max-time 1 "${URL}"; then
-  (cd "${DEPS}" && nohup node wtui.js --web --port=8123 --no-open >> "${LOG}" 2>&1 & echo $! > "${DEPS}/server.pid")
+health() { curl -sf --max-time 1 "${URL}api/health" || true; }
+up() { curl -sf -o /dev/null --max-time 1 "${URL}"; }
+port_busy() {
+  command -v lsof >/dev/null 2>&1 && lsof -ti tcp:8123 >/dev/null 2>&1
+}
+stop_old() {
+  if [ -f "${DEPS}/server.pid" ]; then kill "$(cat "${DEPS}/server.pid")" 2>/dev/null || true; fi
+  if command -v lsof >/dev/null 2>&1; then lsof -ti tcp:8123 | xargs kill 2>/dev/null || true; fi
+}
+HV="$(health)"
+case "${HV}" in
+  *"\"version\":\"${VER}\""*) ;;
+  "") ;;
+  *)
+    stop_old
+    i=0
+    while up && [ "${i}" -lt 20 ]; do i=$((i + 1)); sleep 0.25; done
+    ;;
+esac
+start_server() {
+  cd "${DEPS}" || return 1
+  rm -f "${DEPS}/server.pid"
+  export WTUI_PIDFILE="${DEPS}/server.pid"
+  # setsid отделяет node от .app: иначе macOS гасит сервер вместе с запускалкой.
+  if [ -x /usr/bin/perl ]; then
+    /usr/bin/perl -MPOSIX -e 'POSIX::setsid(); exec @ARGV or die $!' node wtui.js --web --port=8123 --no-open >> "${LOG}" 2>&1 &
+  else
+    nohup node wtui.js --web --port=8123 --no-open >> "${LOG}" 2>&1 &
+  fi
+  disown $! 2>/dev/null || true
+}
+if ! up; then
+  i=0
+  while port_busy && [ "${i}" -lt 20 ]; do i=$((i + 1)); sleep 0.25; done
+  start_server
   i=0
   while [ "${i}" -lt 40 ]; do
-    if curl -sf -o /dev/null --max-time 1 "${URL}"; then break; fi
+    if up; then break; fi
     i=$((i + 1))
     sleep 0.25
   done
 fi
-open "${URL}"
+if up; then
+  open "${URL}"
+else
+  if [ "${UI}" = en ]; then
+    alert "The page did not start. Log: Library/Application Support/TorrentOnline/server.log"
+  else
+    alert "Страница не поднялась. Лог: Library/Application Support/TorrentOnline/server.log"
+  fi
+  exit 1
+fi
 exit 0
 BASH
 chmod +x "${MACOS_DIR}/TorrentOnline"

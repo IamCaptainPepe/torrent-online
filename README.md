@@ -63,7 +63,7 @@ node wtui.js "https://example.com/file.torrent"
 ```bash
 node wtui.js --web
 ```
-Тот же процесс, тот же порт. В браузере: поиск, поле magnet, кнопка файла `.torrent`, карточки с прогрессом, у каждого файла кнопки VLC и Браузер. VLC играет исходник. Браузер играет тот же поток со звуком: обычная шкала, перемотка и смена дорожки. Кнопки RU и EN меняют язык страницы и плеера. «Закрыть» останавливает сервер и не трогает кэш. С телефона в Wi-Fi — через `--lan` (токен в URL).
+Тот же процесс, тот же порт. В браузере: поиск, поле magnet, кнопка файла `.torrent`, карточки с прогрессом, у каждого файла кнопки VLC и Браузер. VLC играет исходник. Браузер играет тот же поток со звуком: обычная шкала, перемотка и смена дорожки. Кнопки RU и EN меняют язык страницы и плеера. «Закрыть» останавливает сервер и не трогает кэш. Следующий двойной щелчок по приложению поднимает страницу снова. С телефона в Wi-Fi — через `--lan` (токен в URL).
 
 ## Нативное приложение (Tauri, macOS)
 Окошко с иконкой, без терминала: над тем же веб-GUI.
@@ -174,7 +174,7 @@ Default cache: `~/Movies/WebTorrent`. The window keeps it after exit and after Q
 ```bash
 node wtui.js --web
 ```
-Same process, same port. The browser has search, a magnet field, a `.torrent` file button, progress cards, and VLC / Browser buttons on each file. VLC plays the original. The browser plays one stream with sound: a normal timeline, seek, and an audio-track switch. The RU and EN buttons switch the page and the player. Quit stops the server and leaves the cache. From a phone on your Wi-Fi — use `--lan` (token in URL).
+Same process, same port. The browser has search, a magnet field, a `.torrent` file button, progress cards, and VLC / Browser buttons on each file. VLC plays the original. The browser plays one stream with sound: a normal timeline, seek, and an audio-track switch. The RU and EN buttons switch the page and the player. Quit stops the server and leaves the cache. The next double-click of the app brings the page back. From a phone on your Wi-Fi — use `--lan` (token in URL).
 
 ## Native app (Tauri, macOS)
 A window with an icon, no terminal — wraps the same web GUI.

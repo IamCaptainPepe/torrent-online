@@ -2,6 +2,13 @@
 
 Формат — [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/), версии — [Semantic Versioning](https://semver.org/lang/ru/).
 
+## [1.7.11] — 2026-10-04
+**RU:** После «Закрыть» повторный двойной щелчок снова открывает страницу. Старая вкладка больше не гасит новый сервер.
+**EN:** After Quit, opening the app again brings the page back. The old tab no longer stops the new server.
+- 🐛 Выход держал порт, и следующий запуск не вставал или попадал в уже умирающий процесс
+- 🐛 Вкладка «сервер остановлен» при новом открытии оставалась на экране. Теперь она сама обновляется, когда сервер снова жив
+- 🐛 Запрос «Закрыть» без метки этого запуска игнорируется
+
 ## [1.7.10] — 2026-10-04
 **RU:** На странице есть кнопка «Закрыть»: она гасит фоновый сервер и не удаляет кэш. Язык переключается кнопками RU и EN.
 **EN:** The page has a Quit button. It stops the background server and does not delete the cache. The language switches with the RU and EN buttons.
