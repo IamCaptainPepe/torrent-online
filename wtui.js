@@ -669,6 +669,15 @@ async function webReq(req, res, client, st, opts, cacheDir, base) {
     res.end(WEB_HTML.replace('__BASE__', base));
     return;
   }
+  if (p === '/hls.min.js') {
+    try {
+      const b = fs.readFileSync(require.resolve('hls.js/dist/hls.min.js'));
+      res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+      res.setHeader('Cache-Control', 'no-store');
+      res.end(b);
+    } catch { res.statusCode = 404; res.end('no hls.js'); }
+    return;
+  }
   if (p === '/api/search') {
     const q = u.searchParams.get('q') || '';
     const { items, notes } = await searchIndexers(q);
@@ -942,7 +951,7 @@ video{flex:1;width:100%;min-height:0;background:#000}
 <div class=bar><b>${esc(f.name)}</b><select id=a style=display:none></select><select id=s style=display:none></select><span id=n></span></div>
 <video id=v controls autoplay playsinline></video>
 <div id=ov>▶</div>
-<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js"></script>
+<script src="${base}/hls.min.js"></script>
 <script>
 var B=${JSON.stringify(base)},ID=${mV[1]},I=${mV[2]};
 var v=document.getElementById("v"),aS=document.getElementById("a"),sS=document.getElementById("s"),n=document.getElementById("n"),ov=document.getElementById("ov");
