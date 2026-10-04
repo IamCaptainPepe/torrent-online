@@ -142,12 +142,25 @@ function pickRandomPort() {
 
 async function listenOnFreePort(server, host, fixedPort) {
   if (fixedPort) {
-    await new Promise((resolve, reject) => {
-      server.once('error', reject);
-      server.once('listening', () => { server.off('error', reject); resolve(); });
-      server.listen(fixedPort, host);
-    });
-    return fixedPort;
+    const deadline = Date.now() + 8000;
+    let lastErr;
+    while (Date.now() < deadline) {
+      try {
+        await new Promise((resolve, reject) => {
+          const onError = (err) => { server.off('listening', onListening); reject(err); };
+          const onListening = () => { server.off('error', onError); resolve(); };
+          server.once('error', onError);
+          server.once('listening', onListening);
+          server.listen(fixedPort, host);
+        });
+        return fixedPort;
+      } catch (err) {
+        lastErr = err;
+        if (err?.code !== 'EADDRINUSE') throw err;
+        await sleep(250);
+      }
+    }
+    throw lastErr || new Error('Порт занят: ' + fixedPort);
   }
   let port = pickRandomPort();
   for (let i = 0; i < 30; i++) {
@@ -608,8 +621,8 @@ video{width:100vw;height:100vh;background:#000;display:block;margin:0}
 var BASE="__BASE__";
 var BOOT="__BOOT__";
 var DICT={
-ru:{phSearch:'Поиск: пацаны 4 сезон · breaking bad',search:'Искать',phMag:'Вставь magnet:?xt=urn:btih:…',addMag:'Добавить magnet',fileBtn:'Файл .torrent',lead:'Поток идёт сразу, целиком ждать не нужно. У каждого файла кнопки VLC и Браузер. Кэш при выходе не удаляется — только кнопкой «Очистить кэш». «Закрыть» останавливает сервер и не трогает скачанное.',clear:'Очистить кэш',quit:'Закрыть',torrents:'Торренты',adding:'добавляю в клиент…',torrent:'торрент',searching:'Ищу…',emptyFind:'Ничего не найдено',searchErr:'Ошибка поиска',needMag:'Нужна ссылка, которая начинается с magnet:',clearAsk:'Удалить скачанные файлы из кэша? Список торрентов тоже очистится.',cleared:'Кэш очищен',clearFail:'Не удалось очистить кэш',uploading:'Загружаю',uploadErr:'Ошибка загрузки',empty:'Пусто. Найди торрент и кликни по строке.',browser:'Браузер',all:'выбрать все',none:'снять все',waitMeta:'ждём метаданные…',peers:'пиры',hint:'Отметь серии галочками — ▶ VLC / ▶ Браузер запустят выбранное. Одна серия стартует автоматически.',del:'✕ удалить',quitAsk:'Остановить сервер? Скачанные файлы останутся в кэше.',quitDone:'Сервер остановлен. Открой TorrentOnline ещё раз — эта вкладка обновится сама. Скачанное на месте.',quitFail:'Сервер всё ещё отвечает.',addErr:'Ошибка /api/add','empty-file':'пустой файл','need-source':'нужна ссылка или файл','no-torrent':'нет торрента','no-file':'нет файла','pick-files':'выбери файлы','no-vlc':'VLC не найден'},
-en:{phSearch:'Search: the boys season 4 · breaking bad',search:'Search',phMag:'Paste magnet:?xt=urn:btih:…',addMag:'Add magnet',fileBtn:'.torrent file',lead:'Playback starts right away. You do not wait for the full download. Each file has VLC and Browser buttons. Exit does not delete the cache. Only Clear cache does. Quit stops the server and leaves downloads on disk.',clear:'Clear cache',quit:'Quit',torrents:'Torrents',adding:'adding to the client…',torrent:'torrent',searching:'Searching…',emptyFind:'Nothing found',searchErr:'Search failed',needMag:'The link must start with magnet:',clearAsk:'Delete downloaded files from the cache? The torrent list will be cleared too.',cleared:'Cache cleared',clearFail:'Could not clear the cache',uploading:'Uploading',uploadErr:'Upload failed',empty:'Nothing here yet. Search for a torrent and click a row.',browser:'Browser',all:'select all',none:'select none',waitMeta:'waiting for metadata…',peers:'peers',hint:'Tick the episodes. VLC and Browser play the selection. A single episode starts on its own.',del:'✕ remove',quitAsk:'Stop the server? Downloaded files stay in the cache.',quitDone:'Server stopped. Open TorrentOnline again and this tab will refresh itself. Downloads stay on disk.',quitFail:'The server is still running.',addErr:'/api/add error','empty-file':'empty file','need-source':'a link or a file is required','no-torrent':'no such torrent','no-file':'no such file','pick-files':'pick files first','no-vlc':'VLC was not found'}
+ru:{phSearch:'Поиск: пацаны 4 сезон · breaking bad',search:'Искать',phMag:'Вставь magnet:?xt=urn:btih:…',addMag:'Добавить magnet',fileBtn:'Файл .torrent',lead:'Поток идёт сразу, целиком ждать не нужно. У каждого файла кнопки VLC и Браузер. Кэш при выходе не удаляется — только кнопкой «Очистить кэш». «Закрыть» останавливает сервер и не трогает скачанное.',clear:'Очистить кэш',quit:'Закрыть',torrents:'Торренты',adding:'добавляю в клиент…',torrent:'торрент',searching:'Ищу…',emptyFind:'Ничего не найдено',searchErr:'Ошибка поиска',needMag:'Нужна ссылка, которая начинается с magnet:',clearAsk:'Удалить скачанные файлы из кэша? Список торрентов тоже очистится.',cleared:'Кэш очищен',clearFail:'Не удалось очистить кэш',uploading:'Загружаю',uploadErr:'Ошибка загрузки',empty:'Пусто. Найди торрент и кликни по строке.',browser:'Браузер',all:'выбрать все',none:'снять все',waitMeta:'ждём метаданные…',peers:'пиры',hint:'Отметь серии галочками — ▶ VLC / ▶ Браузер запустят выбранное. Одна серия стартует автоматически.',del:'✕ удалить',quitAsk:'Остановить сервер? Скачанные файлы останутся в кэше.',quitDone:'Сервер остановлен. Открой TorrentOnline ещё раз — откроется новая вкладка. Эту можно закрыть. Скачанное на месте.',quitFail:'Сервер всё ещё отвечает.',quitSoon:'Сервер только открылся. Нажми «Закрыть» ещё раз через пару секунд.',addErr:'Ошибка /api/add','empty-file':'пустой файл','need-source':'нужна ссылка или файл','no-torrent':'нет торрента','no-file':'нет файла','pick-files':'выбери файлы','no-vlc':'VLC не найден'},
+en:{phSearch:'Search: the boys season 4 · breaking bad',search:'Search',phMag:'Paste magnet:?xt=urn:btih:…',addMag:'Add magnet',fileBtn:'.torrent file',lead:'Playback starts right away. You do not wait for the full download. Each file has VLC and Browser buttons. Exit does not delete the cache. Only Clear cache does. Quit stops the server and leaves downloads on disk.',clear:'Clear cache',quit:'Quit',torrents:'Torrents',adding:'adding to the client…',torrent:'torrent',searching:'Searching…',emptyFind:'Nothing found',searchErr:'Search failed',needMag:'The link must start with magnet:',clearAsk:'Delete downloaded files from the cache? The torrent list will be cleared too.',cleared:'Cache cleared',clearFail:'Could not clear the cache',uploading:'Uploading',uploadErr:'Upload failed',empty:'Nothing here yet. Search for a torrent and click a row.',browser:'Browser',all:'select all',none:'select none',waitMeta:'waiting for metadata…',peers:'peers',hint:'Tick the episodes. VLC and Browser play the selection. A single episode starts on its own.',del:'✕ remove',quitAsk:'Stop the server? Downloaded files stay in the cache.',quitDone:'Server stopped. Open TorrentOnline again and a new tab will open. You can close this one. Downloads stay on disk.',quitFail:'The server is still running.',quitSoon:'The server just opened. Press Quit again in a couple of seconds.',addErr:'/api/add error','empty-file':'empty file','need-source':'a link or a file is required','no-torrent':'no such torrent','no-file':'no such file','pick-files':'pick files first','no-vlc':'VLC was not found'}
 };
 function lang(){try{return localStorage.getItem('to-lang')==='en'?'en':'ru'}catch(e){return 'ru'}}
 function tr(k){var d=DICT[lang()]||DICT.ru;if(d&&d[k]!=null)return d[k];return (DICT.ru&&DICT.ru[k]!=null)?DICT.ru[k]:k}
@@ -638,8 +651,8 @@ document.getElementById('q').addEventListener('keydown',function(e){if(e.key==='
 document.getElementById('mag').onclick=function(){var m=document.getElementById('magin').value.trim();var nb=document.getElementById('notes');if(m.indexOf('magnet:')!==0){nb.innerHTML='<div class=note>'+esc(tr('needMag'))+'</div>';return;}nb.innerHTML='';addTorrent(m);document.getElementById('magin').value='';};
 document.getElementById('magin').addEventListener('keydown',function(e){if(e.key==='Enter')document.getElementById('mag').click();});
 document.getElementById('clr').onclick=function(){if(!confirm(tr('clearAsk')))return;api('/api/clear-cache',{ok:1}).then(function(){document.getElementById('notes').innerHTML='<div class=note>'+esc(tr('cleared'))+'</div>';poll();}).catch(function(){document.getElementById('notes').innerHTML='<div class=note>'+esc(tr('clearFail'))+'</div>';});};
-function showStopped(){if(pollTimer){clearInterval(pollTimer);pollTimer=null;}document.body.innerHTML='<p style="margin:0;padding:28px;font:16px/1.45 -apple-system,sans-serif;color:#e8ecf1">'+esc(tr('quitDone'))+'</p>';document.body.style.background='#0f1115';var n=0;var watch=setInterval(function(){n++;if(n>150){clearInterval(watch);return;}fetch(BASE+'/api/health').then(function(r){if(!r.ok)return;clearInterval(watch);location.reload();}).catch(function(){});},800);}
-document.getElementById('quit').onclick=function(){if(!confirm(tr('quitAsk')))return;fetch(BASE+'/api/quit',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({boot:BOOT})}).then(function(r){if(r.status===409){document.getElementById('notes').innerHTML='<div class=note>'+esc(tr('quitFail'))+'</div>';return;}showStopped();}).catch(function(){showStopped();});};
+function showStopped(){if(pollTimer){clearInterval(pollTimer);pollTimer=null;}document.body.innerHTML='<p style="margin:0;padding:28px;font:16px/1.45 -apple-system,sans-serif;color:#e8ecf1">'+esc(tr('quitDone'))+'</p>';document.body.style.background='#0f1115';}
+document.getElementById('quit').onclick=function(ev){if(ev&&ev.isTrusted===false)return;if(!confirm(tr('quitAsk')))return;var send=function(){fetch(BASE+'/api/quit',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({boot:BOOT})}).then(function(r){if(r.status===409){return r.json().then(function(d){if(d&&d.error==='starting'){if(!send.retried){send.retried=1;setTimeout(send,2000);return;}var n=document.getElementById('notes');if(n)n.innerHTML='<div class=note>'+esc(tr('quitSoon'))+'</div>';return;}var n2=document.getElementById('notes');if(n2)n2.innerHTML='<div class=note>'+esc(tr('quitFail'))+'</div>';});}showStopped();}).catch(function(){showStopped();});};send();};
 function setLang(code){try{localStorage.setItem('to-lang',code)}catch(e){}applyLang();poll();}
 document.getElementById('lang-ru').onclick=function(){setLang('ru');};
 document.getElementById('lang-en').onclick=function(){setLang('en');};
@@ -951,8 +964,16 @@ async function webReq(req, res, client, st, opts, cacheDir, base) {
   if (p === '/api/health') return json(200, { ok: true, version: PKG_VERSION });
   if (p === '/api/quit' && req.method === 'POST') {
     const b = await readBody(req).catch(() => ({}));
-    // Старая вкладка после «Закрыть» не должна гасить уже новый процесс.
-    if (!b || b.boot !== st.boot) return json(409, { error: 'stale' });
+    // Сразу после старта старая вкладка ещё может прислать «Закрыть». Это не клик пользователя.
+    if (Date.now() - (st.startedAt || 0) < 8000) {
+      console.log('quit ignored: starting');
+      return json(409, { error: 'starting' });
+    }
+    if (!b || b.boot !== st.boot) {
+      console.log('quit ignored: stale');
+      return json(409, { error: 'stale' });
+    }
+    console.log('quit accepted');
     res.statusCode = 200;
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.setHeader('Connection', 'close');
@@ -1370,6 +1391,7 @@ async function startWeb(opts, srcArg) {
   const server = makeWebServer(client, st, opts, cacheDir, base);
   const host = opts.lan ? '0.0.0.0' : '127.0.0.1';
   st.port = await listenOnFreePort(server, host, opts.port);
+  st.startedAt = Date.now();
   if (process.env.WTUI_PIDFILE) {
     try { fs.writeFileSync(process.env.WTUI_PIDFILE, String(process.pid)); } catch {}
   }
@@ -1382,20 +1404,22 @@ async function startWeb(opts, srcArg) {
   }
   if (srcArg) { st.pending.push(st.nextId++); client.add(srcArg, { path: cacheDir }); }
   let cleaning = false;
-  async function shutdown(code = 0) {
+  async function shutdown(reason, code = 0) {
     if (cleaning) return; cleaning = true;
+    console.log('выход: ' + reason);
     st.vlc.forEach(v => { try { v.kill(); } catch {} });
     try { server.close(); } catch {}
+    try { server.closeAllConnections(); } catch {}
     if (st.hls) for (const h of st.hls.procs.values()) { try { h.proc.kill('SIGKILL'); } catch {} }
     try { fs.rmSync(path.join(os.tmpdir(), 'wtui-hls-' + process.pid), { recursive: true, force: true }); } catch {}
-    // Порт надо отдать сразу, иначе следующий запуск .app не встаёт. Кэш не стираем.
-    const bye = setTimeout(() => process.exit(code), 200);
-    bye.unref();
+    // Порт отдаём сразу. Кэш не стираем. destroy не ждём: на macOS он может повиснуть и держать процесс.
+    setTimeout(() => process.exit(code), 100);
     try { client.destroy(() => process.exit(code)); } catch { process.exit(code); }
   }
-  st.quit = () => { shutdown(0); };
-  process.on('SIGINT', () => shutdown(0));
-  process.on('SIGTERM', () => shutdown(0));
+  st.quit = () => { shutdown('quit', 0); };
+  process.on('SIGHUP', () => { console.log('SIGHUP ignored'); });
+  process.on('SIGINT', () => shutdown('SIGINT', 0));
+  process.on('SIGTERM', () => shutdown('SIGTERM', 0));
   const NET_NOISE = /premature|aborted|EPIPE|ECONNRESET|ETIMEDOUT|socket|stream|duplicate torrent/i;
   process.on('unhandledRejection', e => { const m = (e && (e.message || e)) + ''; if (!NET_NOISE.test(m)) console.error('unhandledRejection:', m); });
   process.on('uncaughtException', e => { const m = (e && (e.message || e)) + ''; if (NET_NOISE.test(m)) return; console.error('uncaughtException:', m); console.error((e && e.stack || '').split('\\n').slice(0, 8).join('\\n')); });

@@ -88,52 +88,69 @@ if [ ! -d "${DEPS}/node_modules/webtorrent" ] || [ "${OLD}" != "${VER}" ]; then
   printf '%s\n' "${VER}" > "${DEPS}/.app-version"
 fi
 health() { curl -sf --max-time 1 "${URL}api/health" || true; }
-up() { curl -sf -o /dev/null --max-time 1 "${URL}"; }
+healthy() { health | grep -q "\"version\":\"${VER}\""; }
 port_busy() {
-  command -v lsof >/dev/null 2>&1 && lsof -ti tcp:8123 >/dev/null 2>&1
+  command -v lsof >/dev/null 2>&1 && lsof -nP -iTCP:8123 -sTCP:LISTEN -t >/dev/null 2>&1
 }
 stop_old() {
   if [ -f "${DEPS}/server.pid" ]; then kill "$(cat "${DEPS}/server.pid")" 2>/dev/null || true; fi
-  if command -v lsof >/dev/null 2>&1; then lsof -ti tcp:8123 | xargs kill 2>/dev/null || true; fi
+  if command -v lsof >/dev/null 2>&1; then
+    lsof -nP -iTCP:8123 -sTCP:LISTEN -t 2>/dev/null | xargs kill 2>/dev/null || true
+  fi
 }
-HV="$(health)"
-case "${HV}" in
-  *"\"version\":\"${VER}\""*) ;;
-  "") ;;
-  *)
-    stop_old
-    i=0
-    while up && [ "${i}" -lt 20 ]; do i=$((i + 1)); sleep 0.25; done
-    ;;
-esac
+# Второй щелчок не должен убить сервер, который поднимает первый.
+LOCK="${DEPS}/launcher.lock"
+if ! mkdir "${LOCK}" 2>/dev/null; then
+  i=0
+  while [ "${i}" -lt 60 ]; do
+    if healthy; then open "${URL}"; exit 0; fi
+    i=$((i + 1)); sleep 0.25
+  done
+  rmdir "${LOCK}" 2>/dev/null || true
+  mkdir "${LOCK}" 2>/dev/null || true
+fi
+trap 'rmdir "${LOCK}" 2>/dev/null || true' EXIT
 start_server() {
   cd "${DEPS}" || return 1
   rm -f "${DEPS}/server.pid"
-  export WTUI_PIDFILE="${DEPS}/server.pid"
-  # setsid отделяет node от .app: иначе macOS гасит сервер вместе с запускалкой.
-  if [ -x /usr/bin/perl ]; then
-    /usr/bin/perl -MPOSIX -e 'POSIX::setsid(); exec @ARGV or die $!' node wtui.js --web --port=8123 --no-open >> "${LOG}" 2>&1 &
-  else
-    nohup node wtui.js --web --port=8123 --no-open >> "${LOG}" 2>&1 &
+  printf '\n--- start %s ---\n' "$(date '+%Y-%m-%d %H:%M:%S')" >> "${LOG}"
+  # Двойной fork выводит node из процесса .app. Иначе macOS гасит сервер, когда запускалка завершается.
+  if command -v osascript >/dev/null 2>&1; then
+    # quoted form of собирает кавычки уже в AppleScript: в пути есть пробел.
+    osascript <<EOF
+do shell script "cd " & quoted form of "${DEPS}" & " && export PATH=" & quoted form of "${PATH}" & " WTUI_PIDFILE=" & quoted form of "${DEPS}/server.pid" & " && /usr/bin/perl -MPOSIX -e 'exit 0 if fork(); POSIX::setsid(); exit 0 if fork(); exec @ARGV or die' node wtui.js --web --port=8123 --no-open >> " & quoted form of "${LOG}" & " 2>&1"
+EOF
+    return
   fi
-  disown $! 2>/dev/null || true
+  WTUI_PIDFILE="${DEPS}/server.pid" /usr/bin/perl -MPOSIX -e 'exit 0 if fork(); POSIX::setsid(); exit 0 if fork(); exec @ARGV or die $!' node wtui.js --web --port=8123 --no-open >> "${LOG}" 2>&1
 }
-FRESH=0
-if ! up; then
-  FRESH=1
+wait_healthy() {
+  i=0
+  while [ "${i}" -lt 40 ]; do
+    if healthy; then return 0; fi
+    i=$((i + 1)); sleep 0.25
+  done
+  return 1
+}
+if healthy; then
+  sleep 1
+  if healthy; then open "${URL}"; exit 0; fi
+fi
+stop_old
+i=0
+while port_busy && [ "${i}" -lt 30 ]; do i=$((i + 1)); sleep 0.25; done
+start_server
+if ! wait_healthy; then
+  stop_old
   i=0
   while port_busy && [ "${i}" -lt 20 ]; do i=$((i + 1)); sleep 0.25; done
   start_server
-  i=0
-  while [ "${i}" -lt 40 ]; do
-    if up; then break; fi
-    i=$((i + 1))
-    sleep 0.25
-  done
+  wait_healthy || true
 fi
-if up; then
+if healthy; then sleep 1.5; fi
+if healthy; then
   # Новый адрес, чтобы браузер не показал старую вкладку «сервер остановлен».
-  if [ "${FRESH}" = 1 ]; then open "${URL}?t=$(date +%s)"; else open "${URL}"; fi
+  open "${URL}?t=$(date +%s)"
 else
   if [ "${UI}" = en ]; then
     alert "The page did not start. Log: Library/Application Support/TorrentOnline/server.log"
