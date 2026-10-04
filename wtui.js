@@ -840,42 +840,48 @@ async function webReq(req, res, client, st, opts, cacheDir, base) {
     res.on('close', () => { try { proc.kill('SIGKILL'); } catch {} });
     return;
   }
-  const mF = /^\/fmp4\/(\d+)\/(\d+)\/([\w.-]+)$/.exec(p);
-  if (mF) {
-    const e = st.torrents.get(Number(mF[1]));
-    const f = e?.t.files[Number(mF[2])];
+  const mH = /^\/hls\/(\d+)\/(\d+)\/([\w.-]+)$/.exec(p);
+  if (mH) {
+    const e = st.torrents.get(Number(mH[1]));
+    const f = e?.t.files[Number(mH[2])];
     if (!f) { res.statusCode = 404; res.end('not found'); return; }
-    ensureSel(e, Number(mF[2]));
+    ensureSel(e, Number(mH[2]));
     const ffmpeg = detectFFBin('ffmpeg');
     if (!ffmpeg) { res.statusCode = 500; res.end('ffmpeg не найден'); return; }
-    const name = mF[3];
+    const name = mH[3];
     if (name.includes('..')) { res.statusCode = 400; res.end('bad'); return; }
     const a = u.searchParams.get('a') || '0';
     const s1 = u.searchParams.get('si');
     const si = (s1 === null || s1 === '' || !Number.isFinite(Number(s1))) ? -1 : Math.max(0, Math.min(7, Number(s1)));
-    const t = Math.max(0, Math.round((Number(u.searchParams.get('t')) || 0) / 5) * 5);
-    const key = mF[1] + '-' + mF[2] + '-' + a + '-' + (si >= 0 ? 's' + si : 'n') + '-' + t;
+    const t = Math.max(0, Math.round(Number(u.searchParams.get('t')) || 0));
+    const key = mH[1] + '-' + mH[2] + '-' + a + '-' + (si >= 0 ? 's' + si : 'n');
     const dir = path.join(HLS_ROOT, key);
-    const fp = path.join(dir, name);
     const hit0 = hlsProcs.get(key); if (hit0) hit0.touched = Date.now();
     const hit1 = hlsProcs.get(key + '-vtt'); if (hit1) hit1.touched = Date.now();
-    if (!hlsProcs.has(key)) {
+    const need = !hlsProcs.has(key) || Math.abs((hlsProcs.get(key).start || 0) - t) > 3;
+    if (need) {
+      for (const [k, h] of hlsProcs) if (k.startsWith(key) || k.startsWith(mH[1] + '-' + mH[2] + '-')) { try { h.proc.kill('SIGKILL'); } catch {} hlsProcs.delete(k); }
+      await fsp.rm(dir, { recursive: true, force: true });
       await ensureDir(dir);
-      for (const junk of ['file.mp4', 'sub.vtt']) { try { fs.rmSync(path.join(dir, junk)); } catch {} }
-      for (const [k, h] of hlsProcs) if (k.startsWith(mF[1] + '-' + mF[2] + '-')) { try { h.proc.kill('SIGKILL'); } catch {} hlsProcs.delete(k); }
-      const url = 'http://127.0.0.1:' + st.port + base + '/s/' + mF[1] + '/' + mF[2];
+      const url = 'http://127.0.0.1:' + st.port + base + '/s/' + mH[1] + '/' + mH[2];
+      const pre = t > 12 ? t - 10 : t;
+      const post = t > 12 ? 10 : 0;
       const args = ['-y', '-hide_banner', '-loglevel', 'error', '-rw_timeout', '30000000', '-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '5'];
-      if (t > 0) args.push('-ss', String(t));
-      args.push('-i', url, '-map', '0:v:0', '-map', '0:a:' + a, '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-max_muxing_queue_size', '9999', '-f', 'mp4', '-movflags', 'frag_keyframe+empty_moov+default_base_moof', dir + '/file.mp4');
+      if (pre > 0) args.push('-ss', String(pre));
+      args.push('-i', url);
+      if (post > 0) args.push('-ss', String(post));
+      args.push('-map', '0:v:0', '-map', '0:a:' + a, '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-af', 'aresample=async=1:first_pts=0', '-max_muxing_queue_size', '9999', '-f', 'segment', '-segment_time', '4', '-reset_timestamps', '1', '-segment_start_number', '0', dir + '/seg-%03d.ts');
       const proc = spawn(ffmpeg, args, { stdio: ['ignore', 'ignore', 'pipe'] });
       let ffErr = 0;
-      proc.stderr.on('data', d => { if (ffErr < 3) { console.error('fmp4:', String(d).trim().slice(0, 200)); ffErr++; } });
+      proc.stderr.on('data', d => { if (ffErr < 3) { console.error('hls:', String(d).trim().slice(0, 200)); ffErr++; } });
       proc.on('exit', () => { const cur = hlsProcs.get(key); if (cur && cur.proc === proc) hlsProcs.delete(key); });
-      hlsProcs.set(key, { proc, dir, touched: Date.now() });
+      hlsProcs.set(key, { proc, dir, touched: Date.now(), start: t });
       if (si >= 0) {
         const subArgs = ['-y', '-hide_banner', '-loglevel', 'error', '-rw_timeout', '30000000', '-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '5'];
-        if (t > 0) subArgs.push('-ss', String(t));
-        subArgs.push('-i', url, '-map', '0:s:' + si, '-c:s', 'webvtt', '-f', 'webvtt', dir + '/sub.vtt');
+        if (pre > 0) subArgs.push('-ss', String(pre));
+        subArgs.push('-i', url);
+        if (post > 0) subArgs.push('-ss', String(post));
+        subArgs.push('-map', '0:s:' + si, '-c:s', 'webvtt', '-f', 'webvtt', dir + '/sub.vtt');
         const sp = spawn(ffmpeg, subArgs, { stdio: ['ignore', 'ignore', 'pipe'] });
         let sf = 0;
         sp.stderr.on('data', d => { if (sf < 2) { console.error('vtt:', String(d).trim().slice(0, 150)); sf++; } });
@@ -883,33 +889,37 @@ async function webReq(req, res, client, st, opts, cacheDir, base) {
         hlsProcs.set(key + '-vtt', { proc: sp, dir, touched: Date.now() });
       }
     }
+    const h = hlsProcs.get(key);
+    if (h) h.touched = Date.now();
     if (name === 'sub.vtt') {
+      let b = '';
+      try { b = fs.readFileSync(path.join(dir, 'sub.vtt'), 'utf8'); } catch {}
+      const base0 = h ? (h.start || 0) : 0;
+      const shift = s => { const m = /^(\d+):(\d+):([0-9.]+)$/.exec(s); if (!m) return s; let x = (+m[1]) * 3600 + (+m[2]) * 60 + parseFloat(m[3]) - base0; if (x < 0) x = 0; const hh = Math.floor(x / 3600), mm = Math.floor((x % 3600) / 60), ss = (x % 60).toFixed(3).padStart(6, '0'); return (hh ? hh + ':' : '') + String(mm).padStart(2, '0') + ':' + ss; };
+      const outv = b.replace(/(\d[\d:.]*) --> (\d[\d:.]*)/g, (all, x, y) => shift(x.trim()) + ' --> ' + shift(y.trim()));
+      res.setHeader('Content-Type', 'text/vtt; charset=utf-8');
+      res.end(outv || 'WEBVTT\n\n');
+      return;
+    }
+    if (/^seg-\d+\.ts$/.test(name)) {
+      const fp = path.join(dir, name);
       let b = null;
       try { b = fs.readFileSync(fp); } catch {}
-      res.setHeader('Content-Type', 'text/vtt; charset=utf-8');
-      res.end(b || 'WEBVTT\n\n');
+      if (!b) { res.statusCode = 404; res.end('no segment'); return; }
+      res.setHeader('Content-Type', 'video/mp2t');
+      res.setHeader('Cache-Control', 'no-store');
+      res.end(b);
       return;
     }
-    let size = 0;
-    for (let i = 0; i < 60 && size === 0; i++) {
-      try { size = fs.statSync(fp).size; } catch {}
-      if (size === 0) await new Promise(r => setTimeout(r, 500));
-    }
-    if (size === 0) { res.statusCode = 504; res.end('ffmpeg timeout'); return; }
-    res.setHeader('Accept-Ranges', 'bytes');
-    const rm = /^bytes=(\d*)-(\d*)$/.exec((req.headers.range || '').trim());
-    if (rm) {
-      let startB, endB;
-      if (rm[1] === '') { const n = Number(rm[2]); startB = Math.max(0, size - n); endB = size - 1; }
-      else { startB = Number(rm[1]); endB = rm[2] === '' ? size - 1 : Math.min(Number(rm[2]), size - 1); }
-      if (startB >= size || startB > endB) { res.writeHead(416, { 'Content-Range': 'bytes */' + size }); res.end(); return; }
-      res.writeHead(206, { 'Content-Range': 'bytes ' + startB + '-' + endB + '/' + size, 'Content-Length': endB - startB + 1, 'Content-Type': 'video/mp4' });
-      fs.createReadStream(fp, { start: startB, end: endB }).pipe(res);
-      return;
-    }
-    res.setHeader('Content-Type', 'video/mp4');
-    res.setHeader('Content-Length', size);
-    fs.createReadStream(fp).pipe(res);
+    let segs = [];
+    try { segs = fs.readdirSync(dir).filter(x => /^seg-\d+\.ts$/.test(x)).sort((x, y) => (+x.slice(4)) - (+y.slice(4))); } catch {}
+    const durs = segs.map(() => 4);
+    const maxD = 6;
+    let pl = '#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:' + maxD + '\n#EXT-X-PLAYLIST-TYPE:EVENT\n#EXT-X-MEDIA-SEQUENCE:0\n';
+    for (let i = 0; i < segs.length; i++) pl += '#EXTINF:' + durs[i].toFixed(3) + ',\n' + segs[i] + '\n';
+    res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
+    res.setHeader('Cache-Control', 'no-store');
+    res.end(pl);
     return;
   }
   const mV = /^\/view\/(\d+)\/(\d+)$/.exec(p);
@@ -927,8 +937,9 @@ select{background:#1b1b1f;color:#ddd;border:1px solid #333;border-radius:6px;pad
 video{flex:1;width:100%;min-height:0;background:#000}
 #ov{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.45);cursor:pointer;font-size:72px;color:#fff}</style>
 <div class=bar><b>${esc(f.name)}</b><select id=a style=display:none></select><select id=s style=display:none></select><span id=n></span></div>
-<video id=v controls autoplay playsinline src="${base}/s/${mV[1]}/${mV[2]}"></video>
+<video id=v controls autoplay playsinline></video>
 <div id=ov>▶</div>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js"></script>
 <script>
 var B=${JSON.stringify(base)},ID=${mV[1]},I=${mV[2]};
 var v=document.getElementById("v"),aS=document.getElementById("a"),sS=document.getElementById("s"),n=document.getElementById("n"),ov=document.getElementById("ov");
@@ -939,7 +950,11 @@ var parseVtt=function(txt){var NL=String.fromCharCode(10);var C=[];txt.split(NL+
 var pollSub=function(){if(!subUrl)return;fetch(subUrl).then(function(r){return r.text()}).then(parseVtt).catch(function(){})};
 v.addEventListener("timeupdate",function(){var t=v.currentTime,a="";for(var i=cues.length-1;i>=0;i--){if(t>=cues[i][0]&&t<=cues[i][1]){a=cues[i][2];break}}cueDiv.innerHTML=a});
 setInterval(pollSub,20000);
-var play=function(u){v.src=u;v.currentTime=0;v.play().catch(function(){ov.style.display="flex"})};
+var play=function(u){if(hls){try{hls.destroy()}catch(e){}hls=null}
+if(window.Hls&&Hls.isSupported()){hls=new Hls({enableWorker:true,lowLatencyMode:false,liveSyncDurationCount:3});hls.loadSource(u);hls.attachMedia(v);
+hls.on(Hls.Events.MANIFEST_PARSED,function(){v.currentTime=0;v.play().catch(function(){ov.style.display="flex"})});
+hls.on(Hls.Events.ERROR,function(ev,d){if(d.fatal)n.textContent="⚠ HLS: "+d.type})}
+else{v.src=u;v.play().catch(function(){ov.style.display="flex"})}};
 var load=function(){fetch(B+"/api/tracks/"+ID+"/"+I).then(function(r){return r.json()}).then(function(d){
 if(d.retry&&tries++<15){n.textContent="⏳ готовлю файл к стриму…";setTimeout(load,4000);return;}
 if(d.error)n.textContent="⚠ "+d.error;
@@ -950,7 +965,7 @@ A.forEach(function(t){var o=document.createElement("option");o.value=t.a;o.textC
 if(A.length>1){aS.value=A[0].a;aS.style.display=""}
 if(SI.length){var o0=document.createElement("option");o0.value="";o0.textContent="без субтитров";sS.appendChild(o0);
 S.filter(function(t){return SI.indexOf(t.s)>=0}).forEach(function(t){var o=document.createElement("option");o.value=t.s;o.textContent="💬 "+(t.lang&&t.lang!=="und"?t.lang:"субтитры "+(t.s+1))+(t.title?" — "+t.title:"");sS.appendChild(o)});sS.value="";sS.style.display=""}
-var go=function(){var a=aS.style.display!==""?aS.value:0;var s=sS.style.display!==""?sS.value:"";var t=Math.max(0,Math.round(v.currentTime/5)*5-5);cues=[];cueDiv.innerHTML="";subUrl=s!==""?B+"/fmp4/"+ID+"/"+I+"/sub.vtt?a="+a+"&si="+s+"&t="+t:"";if(subUrl)pollSub();play(B+"/fmp4/"+ID+"/"+I+"/file.mp4?a="+a+(s!==""?"&si="+s:"")+(t>0?"&t="+t:""))};
+var go=function(){var a=aS.style.display!==""?aS.value:0;var s=sS.style.display!==""?sS.value:"";var t=Math.max(0,Math.round(v.currentTime));cues=[];cueDiv.innerHTML="";subUrl=s!==""?B+"/hls/"+ID+"/"+I+"/sub.vtt?a="+a+"&si="+s+"&t="+t:"";if(subUrl)pollSub();play(B+"/hls/"+ID+"/"+I+"/master.m3u8?a="+a+(s!==""?"&si="+s:"")+(t>0?"&t="+t:""))};
 aS.onchange=go;sS.onchange=go;go();
 }).catch(function(){if(tries++<15)setTimeout(load,4000)})};
 v.addEventListener("playing",function(){n.textContent="";ov.style.display="none"});
