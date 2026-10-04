@@ -851,7 +851,7 @@ async function webReq(req, res, client, st, opts, cacheDir, base) {
     const name = mH[3];
     if (name.includes('..')) { res.statusCode = 400; res.end('bad'); return; }
     const a = u.searchParams.get('a') || '0';
-    const si = (u.searchParams.get('si') || '').split(',').map(Number).filter(n => Number.isFinite(n)).slice(0, 8);
+    const si = (u.searchParams.get('si') || '').split(',').map(Number).filter(n => Number.isFinite(n)).slice(0, 1);
     const key = mH[1] + '-' + mH[2] + '-' + a + (si.length ? '-s' + si.join('.') : '');
     const dir = path.join(HLS_ROOT, key);
     const fp = path.join(dir, name);
@@ -910,15 +910,11 @@ async function webReq(req, res, client, st, opts, cacheDir, base) {
       'ov.onclick=function(){v.play().catch(function(){});ov.style.display="none"};' +
       'var tries=0,hls=null;' +
       'var NAT=v.canPlayType("application/vnd.apple.mpegurl")!==""&&(!window.Hls||!Hls.isSupported()||/Apple Computer/.test(navigator.vendor));' +
-      'var subTracks=function(){if(hls)return hls.subtitleTracks||[];return Array.prototype.slice.call(v.textTracks||[]).filter(function(t){return t.kind==="subtitles"||t.kind==="captions"})};' +
-      'var applySub=function(i){var T=subTracks();T.forEach(function(t,k){var en=(k===i);if(t.enabled!==undefined&&!!hls)t.enabled=en;else t.mode=en?"showing":"disabled"})};' +
-      'var fillSubs=function(){var T=subTracks();if(!T.length)return;sS.innerHTML="";var o0=document.createElement("option");o0.value="-1";o0.textContent="без субтитров";sS.appendChild(o0);' +
-      'T.forEach(function(t,i){var o=document.createElement("option");o.value=i;o.textContent="💬 "+(t.language&&t.language!=="und"?t.language:"субтитры "+(i+1))+(t.label?" — "+t.label:"")+(t.name?" — "+t.name:"");sS.appendChild(o)});' +
-      'sS.style.display="";sS.value="0";sS.onchange=function(){applySub(+sS.value)};applySub(0)};' +
+      
       'var play=function(u){if(hls){try{hls.destroy()}catch(e){}hls=null}' +
-      'if(NAT){v.src=u;v.play().catch(function(){ov.style.display="flex"});setTimeout(fillSubs,2000);setTimeout(fillSubs,5000)}' +
+      'if(NAT){v.src=u;v.play().catch(function(){ov.style.display="flex"})}' +
       'else if(window.Hls&&Hls.isSupported()){hls=new Hls({startPosition:0,enableWorker:true,lowLatencyMode:false});hls.loadSource(u);hls.attachMedia(v);' +
-      'hls.on(Hls.Events.MANIFEST_PARSED,function(){v.play().catch(function(){ov.style.display="flex"});fillSubs()});' +
+      'hls.on(Hls.Events.MANIFEST_PARSED,function(){v.play().catch(function(){ov.style.display="flex"})});' +
       'hls.on(Hls.Events.ERROR,function(ev,d){if(d.fatal)n.textContent="⚠ HLS: "+d.type})}' +
       'else{v.src=u;v.play().catch(function(){ov.style.display="flex"})}};' +
       'var load=function(){fetch(B+"/api/tracks/"+ID+"/"+I).then(function(r){return r.json()}).then(function(d){' +
@@ -929,8 +925,10 @@ async function webReq(req, res, client, st, opts, cacheDir, base) {
       'var SI=S.filter(function(t){return ["subrip","ass","ssa","srt","mov_text","webvtt","text"].indexOf(t.codec)>=0}).map(function(t){return t.s});' +
       'A.forEach(function(t){var o=document.createElement("option");o.value=t.a;o.textContent="♪ "+(t.lang&&t.lang!=="und"?t.lang:"дорожка "+(t.a+1))+(t.title?" — "+t.title:"")+" ["+t.codec+"]";aS.appendChild(o)});' +
       'if(A.length>1){aS.value=A[0].a;aS.style.display=""}' +
-      'var go=function(){var a=aS.style.display!==""?aS.value:0;play(B+"/hls/"+ID+"/"+I+"/master.m3u8?a="+a+(SI.length?"&si="+SI.join(","):""))};' +
-      'aS.onchange=go;go();' +
+      'var go=function(){var a=aS.style.display!==""?aS.value:0;var s=sS.style.display!==""?sS.value:"";play(B+"/hls/"+ID+"/"+I+"/master.m3u8?a="+a+(s!==""?"&si="+s:""))};' +
+      'if(SI.length){var o0=document.createElement("option");o0.value="";o0.textContent="без субтитров";sS.appendChild(o0);' +
+      'S.filter(function(t){return SI.indexOf(t.s)>=0}).forEach(function(t){var o=document.createElement("option");o.value=t.s;o.textContent="💬 "+(t.lang&&t.lang!=="und"?t.lang:"субтитры "+(t.s+1))+(t.title?" — "+t.title:"");sS.appendChild(o)});sS.value="";sS.style.display=""}' +
+      'aS.onchange=go;sS.onchange=go;go();' +
       '}).catch(function(){if(tries++<15)setTimeout(load,4000)})};' +
       'v.addEventListener("playing",function(){n.textContent="";ov.style.display="none"});' +
       'setInterval(function(){fetch(B+"/api/status").then(function(r){return r.json()}).then(function(l){var t=l.find(function(x){return x.id===ID});if(t&&v.readyState<2)n.textContent="⏬ "+t.speed+" · пиры "+t.peers+(t.progress>0?" · "+t.progress+"%":"")}).catch(function(){})},2000);' +
