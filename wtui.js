@@ -321,7 +321,7 @@ function btihKey(mag) { const m = /btih:([0-9a-fA-F]{40}|[0-9a-fA-F]{32})/.exec(
 
 
 async function searchTPB(q, host = '') {
-  const hosts = ['https://tpb.party', 'https://piratebay.live'];
+  const hosts = ['https://tpb.party', 'https://piratebay.live', 'https://tpbay.site', 'https://piratebay6.org', 'https://thepiratebay3.org'];
   let html = '', lastErr = new Error('TPB: нет ответа');
   for (const h of (host ? [host] : hosts)) {
     try {
@@ -349,12 +349,19 @@ async function searchTPB(q, host = '') {
 }
 
 async function searchRutor(q) {
-  const r = await fetch(`https://rutor.info/search/0/0/0/0/${encodeURIComponent(q)}/`, {
-    headers: { 'user-agent': UA },
-    signal: AbortSignal.timeout(9000),
-  });
-  if (!r.ok) throw new Error(`Rutor: HTTP ${r.status}`);
-  const html = await r.text();
+  const hosts = ['https://rutor.info', 'https://rutor.is', 'https://newrutor.info'];
+  let html = '', lastErr = new Error('Rutor: нет ответа');
+  for (const h of hosts) {
+    try {
+      const r = await fetch(`${h}/search/0/0/0/0/${encodeURIComponent(q)}/`, {
+        headers: { 'user-agent': UA },
+        signal: AbortSignal.timeout(9000),
+      });
+      if (r.ok) { html = await r.text(); lastErr = null; break; }
+      lastErr = new Error(`Rutor: HTTP ${r.status}`);
+    } catch (e) { lastErr = e; }
+  }
+  if (lastErr) throw lastErr;
   const out = [];
   for (const row of html.split('<tr class="gai">').slice(1, 26)) {
     const magRaw = /href="(magnet:[^"]+)"/.exec(row)?.[1];
