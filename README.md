@@ -80,7 +80,7 @@ cd desktop && ./build-mac.sh
 xattr -dr com.apple.quarantine /Applications/TorrentOnline.app
 open /Applications/TorrentOnline.app
 ```
-Свои сборка (`.app` открывает **Terminal** и запускает скрипт):
+Своя сборка (двойной щелчок открывает страницу в браузере, Terminal не нужен):
 ```bash
 ./build/app.sh
 open dist/TorrentOnline.app
@@ -191,7 +191,7 @@ The app is unsigned, so macOS adds a quarantine flag — clear it once:
 xattr -dr com.apple.quarantine /Applications/TorrentOnline.app
 open /Applications/TorrentOnline.app
 ```
-Build it yourself (the `.app` opens **Terminal** and runs the script):
+Build it yourself (a double-click opens the page in the browser, no Terminal window):
 ```bash
 ./build/app.sh
 open dist/TorrentOnline.app
