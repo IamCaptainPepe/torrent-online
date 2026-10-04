@@ -586,17 +586,25 @@ video{width:100vw;height:100vh;background:#000;display:block;margin:0}
 var BASE="__BASE__";
 function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
 function api(p,body){var o=body?{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}:undefined;return fetch(BASE+p,o).then(function(r){return r.json();});}
+function addTorrent(mag){
+var box=document.getElementById('torrents');
+var dn=(/dn=([^&]*)/.exec(mag)||[,''])[1];try{dn=decodeURIComponent(dn.replace(/\+/g,' '))}catch(e){}
+var ph=document.createElement('div');ph.className='card';
+ph.innerHTML='<div class=tname>⏳ '+esc(dn||'торрент')+'</div><div class=tmeta>добавляю в клиент…</div>';
+box.prepend(ph);
+api('/api/add',{source:mag}).then(function(d){if(d&&d.error){ph.innerHTML='<div class=tname>⚠ '+esc(d.error)+'</div>';}poll();toTorrents();}).catch(function(e){ph.innerHTML='<div class=tname>⚠ Ошибка /api/add: '+esc(e&&e.message||e)+'</div>';});
+}
 function doSearch(){var q=document.getElementById('q').value.trim();if(!q)return;var box=document.getElementById('results');box.innerHTML='<div class=note>Ищу…</div>';
 api('/api/search?q='+encodeURIComponent(q)).then(function(d){
 var h='';(d.notes||[]).forEach(function(n){h+='<div class=note>⚠ '+esc(n)+'</div>';});
 if(!d.items.length){box.innerHTML=h+'<div class=note>Ничего не найдено</div>';return;}
 h+=d.items.map(function(it){return '<div class=row data-mag="'+esc(it.mag)+'"><span class=tag>'+esc(it.src)+'</span><span class=rname>'+esc(it.name)+'</span>'+(it.size?'<span class=meta>'+esc(it.size)+'</span>':'')+(it.seeds?'<span class=meta>🌱 '+it.seeds+'</span>':'')+'</div>';}).join('');
 box.innerHTML=h;
-[].forEach.call(box.querySelectorAll('.row'),function(r){r.onclick=function(){api('/api/add',{source:r.getAttribute('data-mag')}).then(function(){poll();toTorrents();});};});
+[].forEach.call(box.querySelectorAll('.row'),function(r){r.onclick=function(){addTorrent(r.getAttribute('data-mag'));};});
 }).catch(function(){box.innerHTML='<div class=note>Ошибка поиска</div>';});}
 document.getElementById('go').onclick=doSearch;
 document.getElementById('q').addEventListener('keydown',function(e){if(e.key==='Enter')doSearch();});
-document.getElementById('mag').onclick=function(){var m=prompt('magnet:');if(m&&m.indexOf('magnet:')===0){api('/api/add',{source:m}).then(function(){poll();toTorrents();});}};
+document.getElementById('mag').onclick=function(){var m=prompt('magnet:');if(m&&m.indexOf('magnet:')===0){addTorrent(m);}};
 document.getElementById('tpath').onclick=function(){document.getElementById('tt').click();};
 document.getElementById('tt').onchange=function(){if(this.files&&this.files[0])uploadFile(this.files[0]);this.value='';};
 function uploadFile(f){var nb=document.getElementById('notes');nb.innerHTML='<div class=note>⏳ Загружаю '+esc(f.name)+'…</div>';
