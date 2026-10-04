@@ -2,6 +2,11 @@
 
 Формат — [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/), версии — [Semantic Versioning](https://semver.org/lang/ru/).
 
+## [1.7.9] — 2026-10-04
+**RU:** В браузере звук больше не идёт рывками и не отстаёт от картинки.
+**EN:** In the browser, audio no longer stutters or drifts off the picture.
+- 🐛 Поток резался на MPEG-TS, и каждый кусок обнулял время. Браузер ставил звук не на ту секунду. Теперь фрагменты fMP4 с одной шкалой времени
+
 ## [1.7.8] — 2026-10-04
 **RU:** `npm i -g` снова доходит до конца. Зависимость `ip-set` больше не вызывает `npx only-allow pnpm` и не роняет установку.
 **EN:** `npm i -g` finishes again. The `ip-set` dependency no longer runs `npx only-allow pnpm` and no longer aborts the install.

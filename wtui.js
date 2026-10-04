@@ -672,26 +672,23 @@ function readBody(req) {
 const HLS_SEG = 4;
 
 function hlsSegName(i) {
-  return 'seg-' + String(i).padStart(5, '0') + '.ts';
+  return 'seg-' + String(i).padStart(5, '0') + '.m4s';
 }
 
 function listHlsSegs(dir) {
   try {
     return fs.readdirSync(dir)
-      .filter(n => /^seg-\d+\.ts$/.test(n))
-      .map(n => Number(n.slice(4, -3)))
+      .filter(n => /^seg-\d+\.m4s$/.test(n))
+      .map(n => Number(n.slice(4, -4)))
       .filter(n => Number.isFinite(n))
       .sort((a, b) => a - b);
   } catch { return []; }
 }
 
-function hlsSegComplete(dir, index, job) {
+function hlsSegComplete(dir, index) {
+  // temp_file: готовый фрагмент появляется атомарно, недописанный лежит как .tmp
   const fp = path.join(dir, hlsSegName(index));
-  let st;
-  try { st = fs.statSync(fp); } catch { return false; }
-  if (st.size < 188) return false;
-  try { if (fs.statSync(path.join(dir, hlsSegName(index + 1))).size > 0) return true; } catch {}
-  return !!(job && job.ended && !job.aborted);
+  try { return fs.statSync(fp).size > 32; } catch { return false; }
 }
 
 async function probeSource(ffprobe, url) {
@@ -742,13 +739,12 @@ function killHlsJob(job, aborted) {
   if (!job || job.aborted || job.ended) return;
   job.aborted = !!aborted;
   try { job.proc.kill('SIGKILL'); } catch {}
-  if (!aborted) return;
-  const segs = listHlsSegs(job.dir);
-  if (!segs.length) return;
-  const tail = segs[segs.length - 1];
-  if (!fs.existsSync(path.join(job.dir, hlsSegName(tail + 1)))) {
-    try { fs.rmSync(path.join(job.dir, hlsSegName(tail))); } catch {}
-  }
+  if (!aborted || !job.dir) return;
+  try {
+    for (const n of fs.readdirSync(job.dir)) {
+      if (n.endsWith('.tmp')) fs.rmSync(path.join(job.dir, n));
+    }
+  } catch {}
 }
 
 function jobCovers(job, index) {
@@ -771,35 +767,40 @@ function ensureHlsJob(hls, key, dir, ffmpeg, url, fromIndex, audioIndex, meta) {
   if (pre > 0.05) args.push('-ss', pre.toFixed(3));
   args.push('-i', url);
   if (post > 0.05) args.push('-ss', post.toFixed(3));
+  if (target > 0.05) args.push('-output_ts_offset', target.toFixed(3));
   args.push('-map', '0:v:0');
   const hasAudio = meta.tracks.length > 0;
   const a = hasAudio ? Math.max(0, Math.min(audioIndex, meta.tracks.length - 1)) : 0;
   if (hasAudio) args.push('-map', '0:a:' + a);
-  // Копия исходного видео режется только по ключевым кадрам, и длина куска
-  // перестаёт совпадать со шкалой. В браузере всегда H.264 с кадром каждые 4 с.
+  // MPEG-TS сбрасывал PTS каждого куска в ноль, браузер ставил звук не на то время.
+  // fMP4 держит одну шкалу: картинка и звук без разрывов на границах.
   // VLC по-прежнему открывает исходный файл как есть.
   const big = (meta.height || 0) > 1080 || (meta.width || 0) > 1920;
   const scale = big
     ? 'scale=trunc(min(1920\\,iw)/2)*2:trunc(min(1080\\,ih)/2)*2'
     : 'scale=trunc(iw/2)*2:trunc(ih/2)*2';
+  const initName = (fs.existsSync(path.join(dir, 'init.mp4')) && fs.statSync(path.join(dir, 'init.mp4')).size > 200)
+    ? 'init-extra.mp4' : 'init.mp4';
   args.push(
-    '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'zerolatency',
-    '-profile:v', 'main', '-crf', '22',
+    '-c:v', 'libx264', '-preset', 'ultrafast', '-profile:v', 'main', '-crf', '22',
     '-vf', scale + ',format=yuv420p',
+    '-g', '1000', '-keyint_min', '1000', '-sc_threshold', '0',
     '-force_key_frames', 'expr:gte(t,n_forced*' + HLS_SEG + ')'
   );
-  if (hasAudio) args.push('-c:a', 'aac', '-b:a', '160k', '-ac', '2', '-af', 'aresample=async=1:first_pts=0');
+  if (hasAudio) args.push('-c:a', 'aac', '-b:a', '160k', '-ac', '2', '-ar', '48000');
   else args.push('-an');
   args.push(
-    '-avoid_negative_ts', 'make_zero',
     '-muxdelay', '0', '-muxpreload', '0',
     '-max_muxing_queue_size', '9999',
-    '-f', 'segment', '-segment_time', String(HLS_SEG),
-    '-segment_format', 'mpegts',
-    '-reset_timestamps', '1',
-    '-break_non_keyframes', '1',
-    '-segment_start_number', String(fromIndex),
-    path.join(dir, 'seg-%05d.ts')
+    '-f', 'hls', '-hls_time', String(HLS_SEG),
+    '-hls_playlist_type', 'event',
+    '-hls_segment_type', 'fmp4',
+    '-hls_fmp4_init_filename', initName,
+    '-hls_flags', 'independent_segments+temp_file',
+    '-hls_list_size', '0',
+    '-start_number', String(fromIndex),
+    '-hls_segment_filename', path.join(dir, 'seg-%05d.m4s'),
+    path.join(dir, 'ffmpeg.m3u8')
   );
   const proc = spawn(ffmpeg, args, { stdio: ['ignore', 'ignore', 'pipe'] });
   const job = { proc, dir, from: fromIndex, touched: Date.now(), ended: false, aborted: false, err: '' };
@@ -816,8 +817,9 @@ function ensureHlsJob(hls, key, dir, ffmpeg, url, fromIndex, audioIndex, meta) {
 
 function vodPlaylist(duration, audio) {
   const n = Math.max(1, Math.ceil(duration / HLS_SEG - 1e-6));
-  let pl = '#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:' + HLS_SEG + '\n#EXT-X-PLAYLIST-TYPE:VOD\n#EXT-X-MEDIA-SEQUENCE:0\n';
+  let pl = '#EXTM3U\n#EXT-X-VERSION:7\n#EXT-X-TARGETDURATION:' + HLS_SEG + '\n#EXT-X-PLAYLIST-TYPE:VOD\n#EXT-X-INDEPENDENT-SEGMENTS\n';
   const qs = '?a=' + encodeURIComponent(String(audio));
+  pl += '#EXT-X-MAP:URI="init.mp4' + qs + '"\n';
   for (let i = 0; i < n; i++) {
     const segDur = Math.min(HLS_SEG, Math.max(0.001, duration - i * HLS_SEG));
     pl += '#EXTINF:' + segDur.toFixed(3) + ',\n' + hlsSegName(i) + qs + '\n';
@@ -1134,7 +1136,38 @@ async function webReq(req, res, client, st, opts, cacheDir, base) {
       res.end(vodPlaylist(meta.duration, a));
       return;
     }
-    const segM = /^seg-(\d+)\.ts$/.exec(name);
+    if (name === 'init.mp4') {
+      await ensureDir(dir);
+      const initFp = path.join(dir, 'init.mp4');
+      if (!fs.existsSync(initFp) || fs.statSync(initFp).size < 200) {
+        const running = hls.procs.get(key);
+        const job = (running && !running.ended && !running.aborted)
+          ? running
+          : ensureHlsJob(hls, key, dir, ffmpeg, url, 0, a, meta);
+        job.touched = Date.now();
+        const deadline = Date.now() + 20000;
+        while (Date.now() < deadline) {
+          try { if (fs.statSync(initFp).size > 200) break; } catch {}
+          if (job.ended && job.err) break;
+          await sleep(100);
+        }
+      }
+      let initBuf = null;
+      try { if (fs.statSync(initFp).size > 200) initBuf = fs.readFileSync(initFp); } catch {}
+      if (!initBuf) {
+        res.statusCode = 503;
+        res.setHeader('Retry-After', '1');
+        res.setHeader('Cache-Control', 'no-store');
+        res.end('init');
+        return;
+      }
+      res.setHeader('Content-Type', 'video/mp4');
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('Content-Length', initBuf.length);
+      res.end(initBuf);
+      return;
+    }
+    const segM = /^seg-(\d+)\.m4s$/.exec(name);
     if (!segM) { res.statusCode = 404; res.end('no'); return; }
     const index = Number(segM[1]);
     const nSeg = Math.max(1, Math.ceil(meta.duration / HLS_SEG - 1e-6));
@@ -1159,7 +1192,7 @@ async function webReq(req, res, client, st, opts, cacheDir, base) {
       return;
     }
     const buf = fs.readFileSync(fp);
-    res.setHeader('Content-Type', 'video/mp2t');
+    res.setHeader('Content-Type', 'video/mp4');
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('Content-Length', buf.length);
     res.end(buf);
