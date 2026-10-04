@@ -1,0 +1,11 @@
+{
+  "name": "ip-set",
+  "version": "3.0.0",
+  "description": "Efficient mutable set for IP addresses",
+  "license": "MIT",
+  "main": "index.js",
+  "type": "commonjs",
+  "dependencies": {
+    "ip-address": "^10.0.1"
+  }
+}

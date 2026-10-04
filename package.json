@@ -1,6 +1,6 @@
 {
   "name": "torrent-online",
-  "version": "1.7.7",
+  "version": "1.7.8",
   "type": "module",
   "description": "Stream .torrent / magnet to VLC or browser — torrent streaming for macOS/Linux without a torrent client. Стрим торрентов в VLC или браузер.",
   "keywords": [
@@ -33,7 +33,8 @@
     "README.md",
     "CHANGELOG.md",
     "LICENSE",
-    "docs/menu.png"
+    "docs/menu.png",
+    "vendor/ip-set"
   ],
   "scripts": {
     "start": "node wtui.js"
@@ -41,8 +42,16 @@
   "dependencies": {
     "@inquirer/prompts": "^7.0.0",
     "hls.js": "^1.5.17",
+    "ip-set": "file:vendor/ip-set",
     "webtorrent": "^3.0.21"
   },
+  "overrides": {
+    "ip-set": "$ip-set"
+  },
+  "bundleDependencies": [
+    "ip-set",
+    "webtorrent"
+  ],
   "engines": {
     "node": ">=18"
   }

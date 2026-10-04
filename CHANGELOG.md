@@ -2,6 +2,10 @@
 
 Формат — [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/), версии — [Semantic Versioning](https://semver.org/lang/ru/).
 
+## [1.7.8] — 2026-10-04
+**RU:** `npm i -g` снова доходит до конца. Зависимость `ip-set` больше не вызывает `npx only-allow pnpm` и не роняет установку.
+**EN:** `npm i -g` finishes again. The `ip-set` dependency no longer runs `npx only-allow pnpm` and no longer aborts the install.
+
 ## [1.7.7] — 2026-10-04
 **RU:** Поиск снова живой. Страница больше не падает с `Invalid regular expression: /+/g`.
 **EN:** Search works again. The page no longer dies on `Invalid regular expression: /+/g`.
