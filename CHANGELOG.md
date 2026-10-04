@@ -2,6 +2,11 @@
 
 Формат — [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/), версии — [Semantic Versioning](https://semver.org/lang/ru/).
 
+## [1.7.7] — 2026-10-04
+**RU:** Поиск снова живой. Страница больше не падает с `Invalid regular expression: /+/g`.
+**EN:** Search works again. The page no longer dies on `Invalid regular expression: /+/g`.
+- 🐛 С 1.7.3 имя из magnet писалось через `/+/g` внутри шаблона, слэш съедался, и браузер отказывался выполнять весь скрипт страницы. Кнопка «Искать» из-за этого молчала и в Chrome, и в Safari
+
 ## [1.7.6] — 2026-10-04
 **RU:** Браузер играет как обычный ролик: стабильное время, перемотка, смена дорожки. Окно с поиском открывается само. Кэш стирает кнопка.
 **EN:** The browser plays a normal VOD title: stable duration, seek, and audio-track switch. The search window opens on launch. Cache is cleared by a button.

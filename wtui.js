@@ -605,7 +605,7 @@ function esc(s){return String(s).replace(/[&<>"']/g,function(c){return {'&':'&am
 function api(p,body){var o=body?{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}:undefined;return fetch(BASE+p,o).then(function(r){return r.json();});}
 function addTorrent(mag){
 var box=document.getElementById('torrents');
-var dn=(/dn=([^&]*)/.exec(mag)||[,''])[1];try{dn=decodeURIComponent(dn.replace(/\+/g,' '))}catch(e){}
+var dn=(/dn=([^&]*)/.exec(mag)||[,''])[1];try{dn=decodeURIComponent(dn.replace(/\\+/g,' '))}catch(e){}
 var ph=document.createElement('div');ph.className='card';
 ph.innerHTML='<div class=tname>⏳ '+esc(dn||'торрент')+'</div><div class=tmeta>добавляю в клиент…</div>';
 box.prepend(ph);
@@ -632,9 +632,9 @@ document.addEventListener('dragover',function(e){e.preventDefault();document.bod
 document.addEventListener('dragleave',function(e){if(e.target===document.body||e.relatedTarget===null)document.body.classList.remove('drop');});
 document.addEventListener('drop',function(e){e.preventDefault();document.body.classList.remove('drop');
 var fs=e.dataTransfer.files||[];
-for(var i=0;i<fs.length;i++){if(/\.torrent$/i.test(fs[i].name)){uploadFile(fs[i]);return;}}
+for(var i=0;i<fs.length;i++){if(/\\.torrent$/i.test(fs[i].name)){uploadFile(fs[i]);return;}}
 var t=(e.dataTransfer.getData('text/uri-list')||'')+(e.dataTransfer.getData('text/plain')||'');
-var mm=t.match(/magnet:\?[^\s]+/);if(mm){addTorrent(mm[0]);}
+var mm=t.match(/magnet:\\?[^\\s]+/);if(mm){addTorrent(mm[0]);}
 });
 function render(list){var box=document.getElementById('torrents');
 if(!list.length){box.innerHTML='<div class=note>Пусто. Найди торрент и кликни по строке.</div>';return;}
