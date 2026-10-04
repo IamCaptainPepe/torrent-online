@@ -46,8 +46,21 @@ RES_APP="${SELF_DIR}/../Resources/app"
 DEPS="${HOME}/Library/Application Support/TorrentOnline"
 URL="http://127.0.0.1:8123/"
 LOG="${DEPS}/server.log"
+UI=ru
+if command -v defaults >/dev/null 2>&1; then
+  PRIMARY="$(defaults read -g AppleLanguages 2>/dev/null | awk 'NR==2 { gsub(/[^A-Za-z_-]/, ""); print; exit }')"
+  case "$PRIMARY" in
+    en*) UI=en ;;
+  esac
+fi
+alert() { osascript -e "display alert \"TorrentOnline\" message \"$1\" as warning"; }
+notify() { osascript -e "display notification \"$1\" with title \"TorrentOnline\"" || true; }
 if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
-  osascript -e 'display alert "TorrentOnline" message "Не найден Node.js. Поставь его: brew install node" as warning'
+  if [ "$UI" = en ]; then
+    alert "Node.js was not found. Install it with: brew install node"
+  else
+    alert "Не найден Node.js. Поставь его: brew install node"
+  fi
   exit 1
 fi
 mkdir -p "${DEPS}/vendor"
@@ -59,9 +72,17 @@ VER="$(node -p "require(process.argv[1]).version" "${DEPS}/package.json")"
 OLD=""
 if [ -f "${DEPS}/.app-version" ]; then OLD="$(cat "${DEPS}/.app-version")"; fi
 if [ ! -d "${DEPS}/node_modules/webtorrent" ] || [ "${OLD}" != "${VER}" ]; then
-  osascript -e 'display notification "Первый запуск: ставятся компоненты, подожди минуту" with title "TorrentOnline"' || true
+  if [ "$UI" = en ]; then
+    notify "First launch: installing components, wait a minute"
+  else
+    notify "Первый запуск: ставятся компоненты, подожди минуту"
+  fi
   if ! (cd "${DEPS}" && npm i --omit=dev >> "${LOG}" 2>&1); then
-    osascript -e 'display alert "TorrentOnline" message "Не удалось поставить компоненты. Лог: Library/Application Support/TorrentOnline/server.log" as warning'
+    if [ "$UI" = en ]; then
+      alert "Could not install components. Log: Library/Application Support/TorrentOnline/server.log"
+    else
+      alert "Не удалось поставить компоненты. Лог: Library/Application Support/TorrentOnline/server.log"
+    fi
     exit 1
   fi
   printf '%s\n' "${VER}" > "${DEPS}/.app-version"

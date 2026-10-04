@@ -2,6 +2,12 @@
 
 Формат — [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/), версии — [Semantic Versioning](https://semver.org/lang/ru/).
 
+## [1.7.10] — 2026-10-04
+**RU:** На странице есть кнопка «Закрыть»: она гасит фоновый сервер и не удаляет кэш. Язык переключается кнопками RU и EN.
+**EN:** The page has a Quit button. It stops the background server and does not delete the cache. The language switches with the RU and EN buttons.
+- ➕ `POST /api/quit` останавливает процесс. Скачанное в `~/Movies/WebTorrent` остаётся
+- ➕ Переключатель языка в шапке и в плеере. Выбор запоминается в браузере. По умолчанию русский
+
 ## [1.7.9] — 2026-10-04
 **RU:** В браузере звук больше не идёт рывками и не отстаёт от картинки.
 **EN:** In the browser, audio no longer stutters or drifts off the picture.

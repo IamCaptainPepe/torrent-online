@@ -47,7 +47,7 @@ node wtui.js "https://example.com/file.torrent"
 | `--port=<N>` | фиксированный порт (иначе авто-поиск 8123..10122) |
 | `--help` | справка |
 
-Кэш по умолчанию: `~/Movies/WebTorrent`. В окне он остаётся после выхода, стирает его кнопка «Очистить кэш». В режиме `--cli` папка по-прежнему удаляется при выходе, если нет `--keep-cache`.
+Кэш по умолчанию: `~/Movies/WebTorrent`. В окне он остаётся после выхода и после кнопки «Закрыть». Стирает его только «Очистить кэш». Язык страницы — кнопки RU и EN (по умолчанию русский). В режиме `--cli` папка по-прежнему удаляется при выходе, если нет `--keep-cache`.
 
 ## Возможности (v1.4)
 - 🔎 Поиск торрентов прямо в меню: **Rutor.info (по-русски)**, TPB.party (по-английски), опционально 1337x API
@@ -63,7 +63,7 @@ node wtui.js "https://example.com/file.torrent"
 ```bash
 node wtui.js --web
 ```
-Тот же процесс, тот же порт. В браузере: поиск, поле magnet, кнопка файла `.torrent`, карточки с прогрессом, у каждого файла кнопки VLC и Браузер. VLC играет исходник. Браузер играет тот же поток со звуком: обычная шкала, перемотка и смена дорожки. С телефона в Wi-Fi — через `--lan` (токен в URL).
+Тот же процесс, тот же порт. В браузере: поиск, поле magnet, кнопка файла `.torrent`, карточки с прогрессом, у каждого файла кнопки VLC и Браузер. VLC играет исходник. Браузер играет тот же поток со звуком: обычная шкала, перемотка и смена дорожки. Кнопки RU и EN меняют язык страницы и плеера. «Закрыть» останавливает сервер и не трогает кэш. С телефона в Wi-Fi — через `--lan` (токен в URL).
 
 ## Нативное приложение (Tauri, macOS)
 Окошко с иконкой, без терминала: над тем же веб-GUI.
@@ -112,7 +112,7 @@ docker run -p 8123:8123 torrent-online node wtui.js "magnet:?xt=..." --lan --no-
 - VLC (`/Applications/VLC.app` или в PATH) — не нужен с `--no-vlc`
 
 ## Частые вопросы
-- **Node не виден из .app** — .app запускает `zsh -l`, PATH подтянется. Если нет — проверь `which node`.
+- **Node не виден из .app** — .app ищет `node` в `/opt/homebrew/bin` и `/usr/local/bin`. Если нет — `brew install node`.
 - **«Writable stream closed prematurely»** — VLC рвёт пробные коннекты; мы их игнорим.
 - **Порт занят** — авто-поиск в диапазоне 8123..10122 или `--port=`.
 - **Magnet без пиров** — приложение отвалится через 60 с с понятной ошибкой, не будет висеть вечно.
@@ -158,7 +158,7 @@ node wtui.js "https://example.com/file.torrent"
 | `--port=<N>` | fixed port (otherwise auto-scan 8123..10122) |
 | `--help` | help |
 
-Default cache: `~/Movies/WebTorrent`. The window keeps it after exit; the «Очистить кэш» button deletes it. In `--cli` mode the folder is still removed on exit unless `--keep-cache` is set.
+Default cache: `~/Movies/WebTorrent`. The window keeps it after exit and after Quit. Only Clear cache deletes it. The page language is the RU and EN buttons (Russian by default). In `--cli` mode the folder is still removed on exit unless `--keep-cache` is set.
 
 ## Features (v1.4)
 - 🔎 Built-in torrent search: **Rutor.info (Russian)**, TPB.party (English), optional 1337x API
@@ -174,7 +174,7 @@ Default cache: `~/Movies/WebTorrent`. The window keeps it after exit; the «Оч
 ```bash
 node wtui.js --web
 ```
-Same process, same port. The browser has search, a magnet field, a `.torrent` file button, progress cards, and VLC / Browser buttons on each file. VLC plays the original. The browser plays one stream with sound: a normal timeline, seek, and an audio-track switch. From a phone on your Wi-Fi — use `--lan` (token in URL).
+Same process, same port. The browser has search, a magnet field, a `.torrent` file button, progress cards, and VLC / Browser buttons on each file. VLC plays the original. The browser plays one stream with sound: a normal timeline, seek, and an audio-track switch. The RU and EN buttons switch the page and the player. Quit stops the server and leaves the cache. From a phone on your Wi-Fi — use `--lan` (token in URL).
 
 ## Native app (Tauri, macOS)
 A window with an icon, no terminal — wraps the same web GUI.
@@ -223,7 +223,7 @@ docker run -p 8123:8123 torrent-online node wtui.js "magnet:?xt=..." --lan --no-
 - VLC (`/Applications/VLC.app` or in PATH) — not needed with `--no-vlc`
 
 ## FAQ
-- **Node not visible from the .app** — the .app runs `zsh -l`, PATH is picked up. If not — check `which node`.
+- **Node not visible from the .app** — the .app looks for `node` in `/opt/homebrew/bin` and `/usr/local/bin`. If it is missing, run `brew install node`.
 - **"Writable stream closed prematurely"** — VLC drops probe connections; we ignore them.
 - **Port busy** — auto-scan in 8123..10122 or use `--port=`.
 - **Magnet with no peers** — the app fails after 60 s with a clear error instead of hanging forever.
