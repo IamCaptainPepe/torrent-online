@@ -776,7 +776,20 @@ async function webReq(req, res, client, st, opts, cacheDir, base) {
         if (s.codec_type === 'audio') tracks.push({ a: ai++, lang, title, codec: s.codec_name });
         else if (s.codec_type === 'subtitle') subs.push({ s: si++, lang, title, codec: s.codec_name });
       }
-      return json(200, { ffmpeg: true, tracks, subs });
+      const vs = (j.streams || []).find(s => s.codec_type === 'video');
+      let vc = '';
+      if (vs) {
+        if (vs.codec_name === 'h264') {
+          const P = { Baseline: '42', Main: '4D', Extended: '58', High: '64', 'High 10': '6E', 'High 4:2:2': '76', 'High 4:4:4': 'F4' };
+          const idc = P[vs.profile] || '64';
+          const lvl = Number.isFinite(vs.level) ? ('0' + Math.round(vs.level / 10).toString(16)).slice(-2) : '28';
+          vc = 'avc1.' + idc + '00' + lvl;
+        } else if (vs.codec_name === 'hevc') {
+          vc = Number.isFinite(vs.level) ? 'hvc1.1.6.L' + Math.round(vs.level / 10) + '.B0' : 'hvc1.1.6.L120.B0';
+        } else if (vs.codec_name === 'av1') vc = 'av01.0.04M.08';
+        else if (vs.codec_name === 'vp9') vc = 'vp09.00.10.08';
+      }
+      return json(200, { ffmpeg: true, tracks, subs, vc });
     } catch (e2) { return json(200, { ffmpeg: true, tracks: [], subs: [], retry: true }); }
   }
   const mR = /^\/remux\/(\d+)\/(\d+)$/.exec(p);
@@ -835,28 +848,42 @@ async function webReq(req, res, client, st, opts, cacheDir, base) {
       '<style>body{margin:0;background:#000;color:#ddd;font:14px system-ui;display:flex;flex-direction:column;height:100vh;box-sizing:border-box}' +
       '.bar{display:flex;gap:10px;align-items:center;padding:6px 10px;flex-wrap:wrap}' +
       'select{background:#1b1b1f;color:#ddd;border:1px solid #333;border-radius:6px;padding:4px;max-width:340px}' +
-      'video{flex:1;width:100%;min-height:0;background:#000}</style>' +
+      'video{flex:1;width:100%;min-height:0;background:#000}' +
+      '#ov{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.45);cursor:pointer;font-size:72px;color:#fff}</style>' +
       '<div class=bar><b>' + esc(f.name) + '</b><select id=a style=display:none></select><select id=s style=display:none></select><span id=n></span></div>' +
-      '<video id=v controls autoplay muted playsinline src="' + base + '/s/' + mV[1] + '/' + mV[2] + '"></video>' +
-      '<script>var B=' + JSON.stringify(base) + ',ID=' + mV[1] + ',I=' + mV[2] + ';' +
-      'var v=document.getElementById("v"),aS=document.getElementById("a"),sS=document.getElementById("s"),n=document.getElementById("n");' +
-      'var MF=' + (webFriendly ? 1 : 0) + ';' +
-      'var tries=0;' +
+      '<video id=v controls autoplay playsinline src="' + base + '/s/' + mV[1] + '/' + mV[2] + '"></video>' +
+      '<div id=ov>▶</div>' +
+      '<script>var B=' + JSON.stringify(base) + ',ID=' + mV[1] + ',I=' + mV[2] + ',MF=' + (webFriendly ? 1 : 0) + ';' +
+      'var v=document.getElementById("v"),aS=document.getElementById("a"),sS=document.getElementById("s"),n=document.getElementById("n"),ov=document.getElementById("ov");' +
+      'ov.onclick=function(){v.play().catch(function(){});ov.style.display="none"};' +
+      'var tries=0,ms=null,VC="";' +
+      'var MSEOK=function(){return ("MediaSource" in window)&&VC&&MediaSource.isTypeSupported("video/mp4;codecs=\'" + VC + ",mp4a.40.2\'")};' +
+      'var stopMse=function(){if(ms){try{ms.endOfStream()}catch(e){}ms=null}};' +
+      'var mse=function(u){stopMse();var m=new MediaSource();v.src=URL.createObjectURL(m);' +
+      'm.addEventListener("sourceopen",function(){var sb=m.addSourceBuffer("video/mp4;codecs=\'" + VC + ",mp4a.40.2\'");sb.mode="sequence";var q=[];' +
+      'sb.addEventListener("updateend",function(){if(q.length){try{sb.appendBuffer(q.shift())}catch(e){}}});' +
+      'fetch(u).then(function(r){var rd=r.body.getReader();var pump=function(){rd.read().then(function(res){' +
+      'if(res.done){try{if(!sb.updating&&!q.length)m.endOfStream()}catch(e){}return;}' +
+      'q.push(res.value);if(q.length<400&&!sb.updating){try{sb.appendBuffer(q.shift())}catch(e){}}pump()}).catch(function(){})};pump();});' +
+      'v.play().catch(function(){ov.style.display="flex"})})};' +
       'var load=function(){fetch(B+"/api/tracks/"+ID+"/"+I).then(function(r){return r.json()}).then(function(d){' +
       'if(d.retry&&tries++<15){n.textContent="⏳ готовлю файл к стриму…";setTimeout(load,4000);return;}' +
       'if(d.error)n.textContent="⚠ "+d.error;' +
-      'var A=d.tracks||[],S=d.subs||[];' +
+      'var A=d.tracks||[],S=d.subs||[];VC=d.vc||"";' +
       'if(!d.ffmpeg){return;}' +
       'if(A.length<2&&!S.length&&MF){return;}' +
       'A.forEach(function(t){var o=document.createElement("option");o.value=t.a;o.textContent="♪ "+(t.lang&&t.lang!=="und"?t.lang:"дорожка "+(t.a+1))+(t.title?" — "+t.title:"")+" ["+t.codec+"]";aS.appendChild(o)});' +
       'if(A.length>1){aS.value=A[0].a;aS.style.display=""}' +
       'if(S.length){var o0=document.createElement("option");o0.value="";o0.textContent="без субтитров";sS.appendChild(o0);' +
       'S.forEach(function(t){var o=document.createElement("option");o.value=t.s;o.textContent="💬 "+(t.lang&&t.lang!=="und"?t.lang:"субтитры "+(t.s+1))+(t.title?" — "+t.title:"");sS.appendChild(o)});sS.style.display=""}' +
-      'var go=function(){var t=v.currentTime;v.src=B+"/remux/"+ID+"/"+I+"?a="+aS.value+(sS.value!==""?"&s="+sS.value:"");v.load();v.addEventListener("loadedmetadata",function once(){v.currentTime=t;v.removeEventListener("loadedmetadata",once)});v.play().catch(function(){})};' +
+      'var go=function(){var t=v.currentTime;var s=sS.value;' +
+      'var u=B+"/remux/"+ID+"/"+I+"?a="+(aS.style.display!==""?aS.value:0)+(s!==""?"&s="+s:"");' +
+      'if(s===""&&MSEOK()){mse(u)}else{stopMse();v.src=u;v.load();v.addEventListener("loadedmetadata",function once(){v.currentTime=t;v.removeEventListener("loadedmetadata",once)});v.play().catch(function(){ov.style.display="flex"})}};' +
       'aS.onchange=go;sS.onchange=go;go();' +
-      'v.addEventListener("playing",function(){n.textContent=""});v.addEventListener("volumechange",function(){if(!v.muted)n.title="звук включён"});' +
+      '}).catch(function(){if(tries++<15)setTimeout(load,4000)})};' +
+      'v.addEventListener("playing",function(){n.textContent="";ov.style.display="none"});' +
       'setInterval(function(){fetch(B+"/api/status").then(function(r){return r.json()}).then(function(l){var t=l.find(function(x){return x.id===ID});if(t&&v.readyState<2)n.textContent="⏬ "+t.speed+" · пиры "+t.peers+(t.progress>0?" · "+t.progress+"%":"")}).catch(function(){})},2000);' +
-      '}).catch(function(){if(tries++<15)setTimeout(load,4000)})};load();</script>');
+      'load();</script>');
     return;
   }
   res.statusCode = 404; res.end('not found');
