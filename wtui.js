@@ -1171,7 +1171,7 @@ async function main() {
   }
 }
 
-const isMain = process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
+const isMain = process.argv[1] && fs.realpathSync(path.resolve(process.argv[1])) === fs.realpathSync(path.resolve(fileURLToPath(import.meta.url)));
 if (isMain) main().catch(err => { console.error('Ошибка:', err?.stack || err?.message || err); process.exit(1); });
 
 export { makeServer, naturalCompare, fmtBytes, esc, buildVLCArgs, contentTypeByExt, searchIndexers, searchTPB, translit };
