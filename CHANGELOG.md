@@ -2,6 +2,16 @@
 
 Формат — [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/), версии — [Semantic Versioning](https://semver.org/lang/ru/).
 
+## [1.7.6] — 2026-10-04
+**RU:** Браузер играет как обычный ролик: стабильное время, перемотка, смена дорожки. Окно с поиском открывается само. Кэш стирает кнопка.
+**EN:** The browser plays a normal VOD title: stable duration, seek, and audio-track switch. The search window opens on launch. Cache is cleared by a button.
+- 🐛 Плейлист больше не «прямой эфир» (`EVENT` без конца). Теперь `VOD` + `ENDLIST`, длительность берётся из файла и не прыгает
+- 🐛 Смена дорожки и перемотка не сбрасывают воспроизведение в ноль
+- 🐛 В браузере всегда H.264 + AAC, поэтому Chrome и Safari играют один и тот же поток. VLC по-прежнему открывает исходный файл
+- 🐛 `hls.js` подключается через `createRequire` (раньше `require` в ESM не находился, и Chrome оставался без плеера)
+- ➕ Запуск без аргументов открывает окно: поиск, magnet, файл `.torrent`, у каждого файла кнопки VLC и Браузер
+- ➕ Кнопка «Очистить кэш». В окне скачанное больше не удаляется при выходе
+
 ## [1.4.3] — 2026-10-03
 **RU:** .app распространяется как артефакт релиза.
 **EN:** The .app ships as a release artifact.

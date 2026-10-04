@@ -37,18 +37,29 @@ cat > "${APP_DIR}/Contents/Info.plist" <<PLIST
 PLIST
 
 cat > "${MACOS_DIR}/TorrentOnline" <<'BASH'
-#!/usr/bin/env bash
-set -euo pipefail
+#!/bin/bash
 SELF_DIR="$(cd "$(dirname "$0")" && pwd)"
 APP_ROOT="${SELF_DIR}/.."
 RES_APP="${APP_ROOT}/Resources/app"
 DEPS="${HOME}/Library/Application Support/TorrentOnline"
-osascript <<OSA
-tell application "Terminal"
-  do script "/bin/zsh -l -c 'mkdir -p \"$DEPS\"; cp \"$RES_APP/wtui.js\" \"$RES_APP/package.json\" \"$DEPS/\"; cd \"$DEPS\"; if [ ! -f \"$DEPS/node_modules/.installed\" ]; then npm i --omit=dev && touch node_modules/.installed; fi; cd \"$DEPS\"; node wtui.js --web'"
-  activate
-end tell
-OSA
+URL="http://127.0.0.1:8123/"
+mkdir -p "$DEPS"
+cp "$RES_APP/wtui.js" "$RES_APP/package.json" "$DEPS/" 2>/dev/null || true
+if [ -f "$RES_APP/package-lock.json" ]; then cp "$RES_APP/package-lock.json" "$DEPS/"; fi
+if curl -sf -o /dev/null --max-time 1 "$URL"; then
+  open "$URL"
+  exit 0
+fi
+/bin/zsh -l -c "cd \"$DEPS\" && if [ ! -d node_modules/webtorrent ]; then npm i --omit=dev || exit 1; fi && nohup node wtui.js --web --port=8123 --no-open >> \"$DEPS/server.log\" 2>&1 & disown" || exit 1
+for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25; do
+  if curl -sf -o /dev/null --max-time 1 "$URL"; then
+    open "$URL"
+    exit 0
+  fi
+  sleep 0.4
+done
+open "$URL"
+exit 0
 BASH
 chmod +x "${MACOS_DIR}/TorrentOnline"
 

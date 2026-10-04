@@ -42,11 +42,12 @@ node wtui.js "https://example.com/file.torrent"
 | `--resume` | продолжить с прошлой позиции (VLC `--start-time`) |
 | `--lan` | слушать 0.0.0.0 + токен в URL — смотреть с телефона/ТВ в сети |
 | `--no-vlc` | только браузер-стриминг, без VLC |
-| `--web` | графический интерфейс в браузере: поиск, карточки, прогресс, выбор файлов |
+| `--web` | окно в браузере. Это же происходит при запуске без торрента |
+| `--cli` | старое меню в терминале |
 | `--port=<N>` | фиксированный порт (иначе авто-поиск 8123..10122) |
 | `--help` | справка |
 
-Кэш по умолчанию: `~/Movies/WebTorrent`. **Внимание: папка кэша удаляется после выхода** (кроме `--keep-cache`) — промпт об этом предупреждает.
+Кэш по умолчанию: `~/Movies/WebTorrent`. В окне он остаётся после выхода, стирает его кнопка «Очистить кэш». В режиме `--cli` папка по-прежнему удаляется при выходе, если нет `--keep-cache`.
 
 ## Возможности (v1.4)
 - 🔎 Поиск торрентов прямо в меню: **Rutor.info (по-русски)**, TPB.party (по-английски), опционально 1337x API
@@ -62,7 +63,7 @@ node wtui.js "https://example.com/file.torrent"
 ```bash
 node wtui.js --web
 ```
-Тот же процесс, тот же порт — только в браузере открывается красивый интерфейс: поиск (Rutor/TPB/1337x, RU→EN словарь), карточки торрентов с прогрессом, выбор файлов галочками, кнопки «▶ VLC» и «▶ Браузер». С телефона в Wi-Fi — через `--lan` (токен в URL).
+Тот же процесс, тот же порт. В браузере: поиск, поле magnet, кнопка файла `.torrent`, карточки с прогрессом, у каждого файла кнопки VLC и Браузер. VLC играет исходник. Браузер играет тот же поток со звуком: обычная шкала, перемотка и смена дорожки. С телефона в Wi-Fi — через `--lan` (токен в URL).
 
 ## Нативное приложение (Tauri, macOS)
 Окошко с иконкой, без терминала: над тем же веб-GUI.
@@ -152,11 +153,12 @@ node wtui.js "https://example.com/file.torrent"
 | `--resume` | continue from the last position (VLC `--start-time`) |
 | `--lan` | listen on 0.0.0.0 + token in URL — watch from phone/TV on your network |
 | `--no-vlc` | browser streaming only, no VLC |
-| `--web` | graphical UI in the browser: search, cards, progress, file picker |
+| `--web` | browser window. This is also what a launch with no torrent does |
+| `--cli` | the old terminal menu |
 | `--port=<N>` | fixed port (otherwise auto-scan 8123..10122) |
 | `--help` | help |
 
-Default cache: `~/Movies/WebTorrent`. **Note: the cache folder is deleted on exit** (unless `--keep-cache`) — the prompt warns about it.
+Default cache: `~/Movies/WebTorrent`. The window keeps it after exit; the «Очистить кэш» button deletes it. In `--cli` mode the folder is still removed on exit unless `--keep-cache` is set.
 
 ## Features (v1.4)
 - 🔎 Built-in torrent search: **Rutor.info (Russian)**, TPB.party (English), optional 1337x API
@@ -172,7 +174,7 @@ Default cache: `~/Movies/WebTorrent`. **Note: the cache folder is deleted on exi
 ```bash
 node wtui.js --web
 ```
-Same process, same port — the browser opens a polished UI: search (Rutor/TPB/1337x, RU→EN dictionary), torrent cards with progress, file checkboxes, “▶ VLC” / “▶ Browser” buttons. From a phone on your Wi-Fi — use `--lan` (token in URL).
+Same process, same port. The browser has search, a magnet field, a `.torrent` file button, progress cards, and VLC / Browser buttons on each file. VLC plays the original. The browser plays one stream with sound: a normal timeline, seek, and an audio-track switch. From a phone on your Wi-Fi — use `--lan` (token in URL).
 
 ## Native app (Tauri, macOS)
 A window with an icon, no terminal — wraps the same web GUI.
