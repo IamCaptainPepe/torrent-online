@@ -118,7 +118,9 @@ start_server() {
   fi
   disown $! 2>/dev/null || true
 }
+FRESH=0
 if ! up; then
+  FRESH=1
   i=0
   while port_busy && [ "${i}" -lt 20 ]; do i=$((i + 1)); sleep 0.25; done
   start_server
@@ -130,7 +132,8 @@ if ! up; then
   done
 fi
 if up; then
-  open "${URL}"
+  # Новый адрес, чтобы браузер не показал старую вкладку «сервер остановлен».
+  if [ "${FRESH}" = 1 ]; then open "${URL}?t=$(date +%s)"; else open "${URL}"; fi
 else
   if [ "${UI}" = en ]; then
     alert "The page did not start. Log: Library/Application Support/TorrentOnline/server.log"

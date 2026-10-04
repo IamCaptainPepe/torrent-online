@@ -2,6 +2,10 @@
 
 Формат — [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/), версии — [Semantic Versioning](https://semver.org/lang/ru/).
 
+## [1.7.12] — 2026-10-04
+**RU:** Если сервер только что поднялся, браузер открывает новую страницу, а не старую вкладку «сервер остановлен».
+**EN:** When the server has just started, the browser opens a fresh page instead of the old «server stopped» tab.
+
 ## [1.7.11] — 2026-10-04
 **RU:** После «Закрыть» повторный двойной щелчок снова открывает страницу. Старая вкладка больше не гасит новый сервер.
 **EN:** After Quit, opening the app again brings the page back. The old tab no longer stops the new server.
