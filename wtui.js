@@ -858,7 +858,8 @@ async function webReq(req, res, client, st, opts, cacheDir, base) {
     const dir = path.join(HLS_ROOT, key);
     const hit0 = hlsProcs.get(key); if (hit0) hit0.touched = Date.now();
     const hit1 = hlsProcs.get(key + '-vtt'); if (hit1) hit1.touched = Date.now();
-    const need = !hlsProcs.has(key) || Math.abs((hlsProcs.get(key).start || 0) - t) > 3;
+    const isSeg = /^seg-\d+\.ts$/.test(name);
+    const need = !isSeg && (!hlsProcs.has(key) || Math.abs((hlsProcs.get(key).start || 0) - t) > 3);
     if (need) {
       for (const [k, h] of hlsProcs) if (k.startsWith(key) || k.startsWith(mH[1] + '-' + mH[2] + '-')) { try { h.proc.kill('SIGKILL'); } catch {} hlsProcs.delete(k); }
       await fsp.rm(dir, { recursive: true, force: true });
@@ -913,10 +914,12 @@ async function webReq(req, res, client, st, opts, cacheDir, base) {
     }
     let segs = [];
     try { segs = fs.readdirSync(dir).filter(x => /^seg-\d+\.ts$/.test(x)).sort((x, y) => (+x.slice(4)) - (+y.slice(4))); } catch {}
+    segs = segs.slice(0, -1); // последний сегмент ещё пишется
     const durs = segs.map(() => 4);
     const maxD = 6;
     let pl = '#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:' + maxD + '\n#EXT-X-PLAYLIST-TYPE:EVENT\n#EXT-X-MEDIA-SEQUENCE:0\n';
-    for (let i = 0; i < segs.length; i++) pl += '#EXTINF:' + durs[i].toFixed(3) + ',\n' + segs[i] + '\n';
+    const qs = '?a=' + encodeURIComponent(a) + (si >= 0 ? '&si=' + si : '&si=') + '&t=' + t;
+    for (let i = 0; i < segs.length; i++) pl += '#EXTINF:' + durs[i].toFixed(3) + ',\n' + segs[i] + qs + '\n';
     res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
     res.setHeader('Cache-Control', 'no-store');
     res.end(pl);
