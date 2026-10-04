@@ -861,9 +861,10 @@ async function webReq(req, res, client, st, opts, cacheDir, base) {
     const hit1 = hlsProcs.get(key + '-vtt'); if (hit1) hit1.touched = Date.now();
     if (!hlsProcs.has(key)) {
       await ensureDir(dir);
+      for (const junk of ['file.mp4', 'sub.vtt']) { try { fs.rmSync(path.join(dir, junk)); } catch {} }
       for (const [k, h] of hlsProcs) if (k.startsWith(mF[1] + '-' + mF[2] + '-')) { try { h.proc.kill('SIGKILL'); } catch {} hlsProcs.delete(k); }
       const url = 'http://127.0.0.1:' + st.port + base + '/s/' + mF[1] + '/' + mF[2];
-      const args = ['-hide_banner', '-loglevel', 'error', '-rw_timeout', '30000000', '-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '5'];
+      const args = ['-y', '-hide_banner', '-loglevel', 'error', '-rw_timeout', '30000000', '-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '5'];
       if (t > 0) args.push('-ss', String(t));
       args.push('-i', url, '-map', '0:v:0', '-map', '0:a:' + a, '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-max_muxing_queue_size', '9999', '-f', 'mp4', '-movflags', 'frag_keyframe+empty_moov+default_base_moof', dir + '/file.mp4');
       const proc = spawn(ffmpeg, args, { stdio: ['ignore', 'ignore', 'pipe'] });
@@ -872,7 +873,7 @@ async function webReq(req, res, client, st, opts, cacheDir, base) {
       proc.on('exit', () => { const cur = hlsProcs.get(key); if (cur && cur.proc === proc) hlsProcs.delete(key); });
       hlsProcs.set(key, { proc, dir, touched: Date.now() });
       if (si >= 0) {
-        const subArgs = ['-hide_banner', '-loglevel', 'error', '-rw_timeout', '30000000', '-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '5'];
+        const subArgs = ['-y', '-hide_banner', '-loglevel', 'error', '-rw_timeout', '30000000', '-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '5'];
         if (t > 0) subArgs.push('-ss', String(t));
         subArgs.push('-i', url, '-map', '0:s:' + si, '-c:s', 'webvtt', '-f', 'webvtt', dir + '/sub.vtt');
         const sp = spawn(ffmpeg, subArgs, { stdio: ['ignore', 'ignore', 'pipe'] });
