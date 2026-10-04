@@ -654,6 +654,9 @@ function makeWebServer(client, st, opts, cacheDir, base) {
 async function webReq(req, res, client, st, opts, cacheDir, base) {
   const u = new URL(req.url, 'http://127.0.0.1');
   const ensureSel = (e, i) => { const f = e?.t.files[i]; if (f && !e.sel.has(i)) { e.sel.add(i); try { f.select(); } catch {} } };
+  const hlsProcs = new Map();
+  const HLS_ROOT = path.join(os.tmpdir(), 'wtui-hls-' + process.pid);
+  setInterval(() => { const now = Date.now(); for (const [k, h] of hlsProcs) if (now - h.touched > 180000) { try { h.proc.kill('SIGKILL'); } catch {} hlsProcs.delete(k); try { fs.rmSync(h.dir, { recursive: true, force: true }); } catch {} } } , 30000).unref();
   let p = u.pathname;
   if (base) {
     if (p !== base && !p.startsWith(base + '/')) { res.statusCode = 404; res.end('not found'); return; }
@@ -746,6 +749,7 @@ async function webReq(req, res, client, st, opts, cacheDir, base) {
     const id = Number(b.id);
     const e = st.torrents.get(id);
     if (e) { st.torrents.delete(id); try { await new Promise(r => e.t.destroy(r)); } catch {} }
+    for (const [k, h] of hlsProcs) if (k.startsWith(id + '-')) { try { h.proc.kill('SIGKILL'); } catch {} hlsProcs.delete(k); try { fs.rmSync(h.dir, { recursive: true, force: true }); } catch {} }
     return json(200, { ok: true });
   }
   const mS = /^\/s\/(\d+)\/(\d+)$/.exec(p);
@@ -836,6 +840,53 @@ async function webReq(req, res, client, st, opts, cacheDir, base) {
     res.on('close', () => { try { proc.kill('SIGKILL'); } catch {} });
     return;
   }
+  const mH = /^\/hls\/(\d+)\/(\d+)\/([\w.%-]+)$/.exec(p);
+  if (mH) {
+    const e = st.torrents.get(Number(mH[1]));
+    const f = e?.t.files[Number(mH[2])];
+    if (!f) { res.statusCode = 404; res.end('not found'); return; }
+    ensureSel(e, Number(mH[2]));
+    const ffmpeg = detectFFBin('ffmpeg');
+    if (!ffmpeg) { res.statusCode = 500; res.end('ffmpeg не найден'); return; }
+    const name = mH[3];
+    if (name.includes('..')) { res.statusCode = 400; res.end('bad'); return; }
+    const a = u.searchParams.get('a') || '0';
+    const si = (u.searchParams.get('si') || '').split(',').map(Number).filter(n => Number.isFinite(n)).slice(0, 8);
+    const key = mH[1] + '-' + mH[2] + '-' + a + (si.length ? '-s' + si.join('.') : '');
+    const dir = path.join(HLS_ROOT, key);
+    const fp = path.join(dir, name);
+    const hit0 = hlsProcs.get(key); if (hit0) hit0.touched = Date.now();
+    if (name !== 'master.m3u8') {
+      let b = null;
+      try { b = fs.readFileSync(fp); } catch {}
+      if (b) { res.setHeader('Content-Type', name.endsWith('.m3u8') ? 'application/x-mpegURL' : name.endsWith('.ts') ? 'video/mp2t' : name.endsWith('.vtt') ? 'text/vtt; charset=utf-8' : 'application/octet-stream'); res.end(b); }
+      else { res.statusCode = 404; res.end('no segment'); }
+      return;
+    }
+    if (!hlsProcs.has(key)) {
+      await ensureDir(dir);
+      for (const [k, h] of hlsProcs) if (k.startsWith(mH[1] + '-' + mH[2] + '-')) { try { h.proc.kill('SIGKILL'); } catch {} hlsProcs.delete(k); }
+      const url = 'http://127.0.0.1:' + st.port + base + '/s/' + mH[1] + '/' + mH[2];
+      const args = ['-hide_banner', '-loglevel', 'error', '-rw_timeout', '30000000', '-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '5', '-i', url, '-map', '0:v:0', '-map', '0:a:' + a, '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k'];
+      for (const i of si) args.push('-map', '0:s:' + i);
+      if (si.length) args.push('-c:s', 'webvtt');
+      const vsm = ['v:0', 'a:0']; for (let i = 0; i < si.length; i++) vsm.push('s:' + i);
+      args.push('-f', 'hls', '-hls_time', '4', '-hls_list_size', '12', '-hls_flags', 'delete_segments+independent_segments', '-hls_segment_type', 'mpegts', '-master_pl_name', 'master.m3u8', '-var_stream_map', vsm.join(','), '-hls_segment_filename', dir + '/seg-%v%a%s-%d.ts', dir + '/pl-%v%a%s.m3u8');
+      const proc = spawn(ffmpeg, args, { stdio: ['ignore', 'ignore', 'pipe'] });
+      let ffErr = 0;
+      proc.stderr.on('data', d => { if (ffErr < 3) { console.error('hls:', String(d).trim().slice(0, 200)); ffErr++; } });
+      proc.on('exit', () => { const cur = hlsProcs.get(key); if (cur && cur.proc === proc) hlsProcs.delete(key); });
+      hlsProcs.set(key, { proc, dir, touched: Date.now() });
+    }
+    for (let i = 0; i < 60; i++) {
+      let b = null;
+      try { b = fs.readFileSync(fp); } catch {}
+      if (b) { res.setHeader('Content-Type', 'application/x-mpegURL'); res.end(b); return; }
+      await new Promise(r => setTimeout(r, 500));
+    }
+    res.statusCode = 504; res.end('ffmpeg timeout');
+    return;
+  }
   const mV = /^\/view\/(\d+)\/(\d+)$/.exec(p);
   if (mV) {
     const e = st.torrents.get(Number(mV[1]));
@@ -853,33 +904,33 @@ async function webReq(req, res, client, st, opts, cacheDir, base) {
       '<div class=bar><b>' + esc(f.name) + '</b><select id=a style=display:none></select><select id=s style=display:none></select><span id=n></span></div>' +
       '<video id=v controls autoplay playsinline src="' + base + '/s/' + mV[1] + '/' + mV[2] + '"></video>' +
       '<div id=ov>▶</div>' +
+      '<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js"></script>' +
       '<script>var B=' + JSON.stringify(base) + ',ID=' + mV[1] + ',I=' + mV[2] + ',MF=' + (webFriendly ? 1 : 0) + ';' +
       'var v=document.getElementById("v"),aS=document.getElementById("a"),sS=document.getElementById("s"),n=document.getElementById("n"),ov=document.getElementById("ov");' +
       'ov.onclick=function(){v.play().catch(function(){});ov.style.display="none"};' +
-      'var tries=0,ms=null,VC="";' +
-      'var MSEOK=function(){return ("MediaSource" in window)&&VC&&MediaSource.isTypeSupported("video/mp4;codecs=\'" + VC + ",mp4a.40.2\'")};' +
-      'var stopMse=function(){if(ms){try{ms.endOfStream()}catch(e){}ms=null}};' +
-      'var mse=function(u){stopMse();var m=new MediaSource();v.src=URL.createObjectURL(m);' +
-      'm.addEventListener("sourceopen",function(){var sb=m.addSourceBuffer("video/mp4;codecs=\'" + VC + ",mp4a.40.2\'");sb.mode="sequence";var q=[];' +
-      'sb.addEventListener("updateend",function(){if(q.length){try{sb.appendBuffer(q.shift())}catch(e){}}});' +
-      'fetch(u).then(function(r){var rd=r.body.getReader();var pump=function(){rd.read().then(function(res){' +
-      'if(res.done){try{if(!sb.updating&&!q.length)m.endOfStream()}catch(e){}return;}' +
-      'q.push(res.value);if(q.length<400&&!sb.updating){try{sb.appendBuffer(q.shift())}catch(e){}}pump()}).catch(function(){})};pump();});' +
-      'v.play().catch(function(){ov.style.display="flex"})})};' +
+      'var tries=0,hls=null;' +
+      'var NAT=v.canPlayType("application/vnd.apple.mpegurl")!==""&&(!window.Hls||!Hls.isSupported()||/Apple Computer/.test(navigator.vendor));' +
+      'var subTracks=function(){if(hls)return hls.subtitleTracks||[];return Array.prototype.slice.call(v.textTracks||[]).filter(function(t){return t.kind==="subtitles"||t.kind==="captions"})};' +
+      'var applySub=function(i){var T=subTracks();T.forEach(function(t,k){var en=(k===i);if(t.enabled!==undefined&&!!hls)t.enabled=en;else t.mode=en?"showing":"disabled"})};' +
+      'var fillSubs=function(){var T=subTracks();if(!T.length)return;sS.innerHTML="";var o0=document.createElement("option");o0.value="-1";o0.textContent="без субтитров";sS.appendChild(o0);' +
+      'T.forEach(function(t,i){var o=document.createElement("option");o.value=i;o.textContent="💬 "+(t.language&&t.language!=="und"?t.language:"субтитры "+(i+1))+(t.label?" — "+t.label:"")+(t.name?" — "+t.name:"");sS.appendChild(o)});' +
+      'sS.style.display="";sS.value="0";sS.onchange=function(){applySub(+sS.value)};applySub(0)};' +
+      'var play=function(u){if(hls){try{hls.destroy()}catch(e){}hls=null}' +
+      'if(NAT){v.src=u;v.play().catch(function(){ov.style.display="flex"});setTimeout(fillSubs,2000);setTimeout(fillSubs,5000)}' +
+      'else if(window.Hls&&Hls.isSupported()){hls=new Hls({startPosition:0,enableWorker:true,lowLatencyMode:false});hls.loadSource(u);hls.attachMedia(v);' +
+      'hls.on(Hls.Events.MANIFEST_PARSED,function(){v.play().catch(function(){ov.style.display="flex"});fillSubs()});' +
+      'hls.on(Hls.Events.ERROR,function(ev,d){if(d.fatal)n.textContent="⚠ HLS: "+d.type})}' +
+      'else{v.src=u;v.play().catch(function(){ov.style.display="flex"})}};' +
       'var load=function(){fetch(B+"/api/tracks/"+ID+"/"+I).then(function(r){return r.json()}).then(function(d){' +
       'if(d.retry&&tries++<15){n.textContent="⏳ готовлю файл к стриму…";setTimeout(load,4000);return;}' +
       'if(d.error)n.textContent="⚠ "+d.error;' +
-      'var A=d.tracks||[],S=d.subs||[];VC=d.vc||"";' +
+      'var A=d.tracks||[],S=d.subs||[];' +
       'if(!d.ffmpeg){return;}' +
-      'if(A.length<2&&!S.length&&MF){return;}' +
+      'var SI=S.filter(function(t){return ["subrip","ass","ssa","srt","mov_text","webvtt","text"].indexOf(t.codec)>=0}).map(function(t){return t.s});' +
       'A.forEach(function(t){var o=document.createElement("option");o.value=t.a;o.textContent="♪ "+(t.lang&&t.lang!=="und"?t.lang:"дорожка "+(t.a+1))+(t.title?" — "+t.title:"")+" ["+t.codec+"]";aS.appendChild(o)});' +
       'if(A.length>1){aS.value=A[0].a;aS.style.display=""}' +
-      'if(S.length){var o0=document.createElement("option");o0.value="";o0.textContent="без субтитров";sS.appendChild(o0);' +
-      'S.forEach(function(t){var o=document.createElement("option");o.value=t.s;o.textContent="💬 "+(t.lang&&t.lang!=="und"?t.lang:"субтитры "+(t.s+1))+(t.title?" — "+t.title:"");sS.appendChild(o)});sS.style.display=""}' +
-      'var go=function(){var t=v.currentTime;var s=sS.value;' +
-      'var u=B+"/remux/"+ID+"/"+I+"?a="+(aS.style.display!==""?aS.value:0)+(s!==""?"&s="+s:"");' +
-      'if(s===""&&MSEOK()){mse(u)}else{stopMse();v.src=u;v.load();v.addEventListener("loadedmetadata",function once(){v.currentTime=t;v.removeEventListener("loadedmetadata",once)});v.play().catch(function(){ov.style.display="flex"})}};' +
-      'aS.onchange=go;sS.onchange=go;go();' +
+      'var go=function(){var a=aS.style.display!==""?aS.value:0;play(B+"/hls/"+ID+"/"+I+"/master.m3u8?a="+a+(SI.length?"&si="+SI.join(","):""))};' +
+      'aS.onchange=go;go();' +
       '}).catch(function(){if(tries++<15)setTimeout(load,4000)})};' +
       'v.addEventListener("playing",function(){n.textContent="";ov.style.display="none"});' +
       'setInterval(function(){fetch(B+"/api/status").then(function(r){return r.json()}).then(function(l){var t=l.find(function(x){return x.id===ID});if(t&&v.readyState<2)n.textContent="⏬ "+t.speed+" · пиры "+t.peers+(t.progress>0?" · "+t.progress+"%":"")}).catch(function(){})},2000);' +
@@ -931,6 +982,8 @@ async function startWeb(opts, srcArg) {
     if (cleaning) return; cleaning = true;
     st.vlc.forEach(v => { try { v.kill(); } catch {} });
     try { server.close(); } catch {}
+    hlsProcs.forEach(h => { try { h.proc.kill('SIGKILL'); } catch {} });
+    try { fs.rmSync(path.join(os.tmpdir(), 'wtui-hls-' + process.pid), { recursive: true, force: true }); } catch {}
     try { await new Promise(r => client.destroy(r)); } catch {}
     if (!opts.keepCache) await cleanCache(cacheDir);
     process.exit(code);
