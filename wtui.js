@@ -851,11 +851,20 @@ async function webReq(req, res, client, st, opts, cacheDir, base) {
     const name = mH[3];
     if (name.includes('..')) { res.statusCode = 400; res.end('bad'); return; }
     const a = u.searchParams.get('a') || '0';
-    const si = (u.searchParams.get('si') || '').split(',').map(Number).filter(n => Number.isFinite(n)).slice(0, 1);
-    const key = mH[1] + '-' + mH[2] + '-' + a + (si.length ? '-s' + si.join('.') : '');
+    const s1 = u.searchParams.get('si');
+    const si = (s1 === null || s1 === '' || !Number.isFinite(Number(s1))) ? -1 : Math.max(0, Math.min(7, Number(s1)));
+    const key = mH[1] + '-' + mH[2] + '-' + a + '-' + (si >= 0 ? 's' + si : 'n');
     const dir = path.join(HLS_ROOT, key);
     const fp = path.join(dir, name);
     const hit0 = hlsProcs.get(key); if (hit0) hit0.touched = Date.now();
+    const hit1 = hlsProcs.get(key + '-vtt'); if (hit1) hit1.touched = Date.now();
+    if (name === 'sub.vtt') {
+      let b = null;
+      try { b = fs.readFileSync(fp); } catch {}
+      res.setHeader('Content-Type', 'text/vtt; charset=utf-8');
+      res.end(b || 'WEBVTT\n\n');
+      return;
+    }
     if (name !== 'master.m3u8') {
       let b = null;
       try { b = fs.readFileSync(fp); } catch {}
@@ -868,17 +877,20 @@ async function webReq(req, res, client, st, opts, cacheDir, base) {
       for (const [k, h] of hlsProcs) if (k.startsWith(mH[1] + '-' + mH[2] + '-')) { try { h.proc.kill('SIGKILL'); } catch {} hlsProcs.delete(k); }
       const url = 'http://127.0.0.1:' + st.port + base + '/s/' + mH[1] + '/' + mH[2];
       const args = ['-hide_banner', '-loglevel', 'error', '-rw_timeout', '30000000', '-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '5', '-i', url, '-map', '0:v:0', '-map', '0:a:' + a, '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k'];
-      for (const i of si) args.push('-map', '0:s:' + i);
-      if (si.length) args.push('-c:s', 'webvtt');
-      const vsm = ['v:0', 'a:0']; for (let i = 0; i < si.length; i++) vsm.push('s:' + i);
-      const segTpl = si.length ? 'seg-%s-%d.ts' : 'seg-%d.ts';
-      const plTpl = si.length ? 'pl-%s.m3u8' : 'pl.m3u8';
-      args.push('-f', 'hls', '-hls_time', '4', '-hls_list_size', '0', '-hls_playlist_type', 'event', '-hls_flags', 'independent_segments', '-hls_segment_type', 'mpegts', '-master_pl_name', 'master.m3u8', '-var_stream_map', vsm.join(','), '-hls_segment_filename', dir + '/' + segTpl, dir + '/' + plTpl);
+      args.push('-f', 'hls', '-hls_time', '4', '-hls_list_size', '0', '-hls_playlist_type', 'event', '-hls_flags', 'independent_segments', '-hls_segment_type', 'mpegts', '-master_pl_name', 'master.m3u8', '-var_stream_map', 'v:0,a:0', '-hls_segment_filename', dir + '/seg-%d.ts', dir + '/pl.m3u8');
       const proc = spawn(ffmpeg, args, { stdio: ['ignore', 'ignore', 'pipe'] });
       let ffErr = 0;
       proc.stderr.on('data', d => { if (ffErr < 3) { console.error('hls:', String(d).trim().slice(0, 200)); ffErr++; } });
       proc.on('exit', () => { const cur = hlsProcs.get(key); if (cur && cur.proc === proc) hlsProcs.delete(key); });
       hlsProcs.set(key, { proc, dir, touched: Date.now() });
+      if (si >= 0) {
+        const subArgs = ['-hide_banner', '-loglevel', 'error', '-rw_timeout', '30000000', '-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '5', '-i', url, '-map', '0:s:' + si, '-c:s', 'webvtt', '-f', 'webvtt', dir + '/sub.vtt'];
+        const sp = spawn(ffmpeg, subArgs, { stdio: ['ignore', 'ignore', 'pipe'] });
+        let sf = 0;
+        sp.stderr.on('data', d => { if (sf < 2) { console.error('vtt:', String(d).trim().slice(0, 150)); sf++; } });
+        sp.on('exit', () => { const cur = hlsProcs.get(key + '-vtt'); if (cur && cur.proc === sp) hlsProcs.delete(key + '-vtt'); });
+        hlsProcs.set(key + '-vtt', { proc: sp, dir, touched: Date.now() });
+      }
     }
     for (let i = 0; i < 60; i++) {
       let b = null;
@@ -897,43 +909,48 @@ async function webReq(req, res, client, st, opts, cacheDir, base) {
     ensureSel(e, Number(mV[2]));
     const webFriendly = /\.(mp4|m4v|webm|m4a)$/i.test(f.name);
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.end('<!doctype html><meta charset=utf-8><title>' + esc(f.name) + '</title>' +
-      '<style>body{margin:0;background:#000;color:#ddd;font:14px system-ui;display:flex;flex-direction:column;height:100vh;box-sizing:border-box}' +
-      '.bar{display:flex;gap:10px;align-items:center;padding:6px 10px;flex-wrap:wrap}' +
-      'select{background:#1b1b1f;color:#ddd;border:1px solid #333;border-radius:6px;padding:4px;max-width:340px}' +
-      'video{flex:1;width:100%;min-height:0;background:#000}' +
-      '#ov{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.45);cursor:pointer;font-size:72px;color:#fff}</style>' +
-      '<div class=bar><b>' + esc(f.name) + '</b><select id=a style=display:none></select><select id=s style=display:none></select><span id=n></span></div>' +
-      '<video id=v controls autoplay playsinline src="' + base + '/s/' + mV[1] + '/' + mV[2] + '"></video>' +
-      '<div id=ov>▶</div>' +
-      '<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js"></script>' +
-      '<script>var B=' + JSON.stringify(base) + ',ID=' + mV[1] + ',I=' + mV[2] + ',MF=' + (webFriendly ? 1 : 0) + ';' +
-      'var v=document.getElementById("v"),aS=document.getElementById("a"),sS=document.getElementById("s"),n=document.getElementById("n"),ov=document.getElementById("ov");' +
-      'ov.onclick=function(){v.play().catch(function(){});ov.style.display="none"};' +
-      'var tries=0,hls=null;' +
-      
-      
-      'var play=function(u,seek){if(hls){try{hls.destroy()}catch(e){}hls=null}' +
-      'if(window.Hls&&Hls.isSupported()){hls=new Hls({startPosition:0,enableWorker:true,lowLatencyMode:false});hls.loadSource(u);hls.attachMedia(v);' +
-      'hls.on(Hls.Events.MANIFEST_PARSED,function(){v.play().catch(function(){ov.style.display="flex"});if(seek>1){var iv=setInterval(function(){if(v.duration>seek+3){v.currentTime=seek;clearInterval(iv)}},1000);setTimeout(function(){clearInterval(iv)},120000)}});' +
-      'hls.on(Hls.Events.ERROR,function(ev,d){if(d.fatal)n.textContent="⚠ HLS: "+d.type})}' +
-      'else{v.src=u;v.play().catch(function(){ov.style.display="flex"})}};' +
-      'var load=function(){fetch(B+"/api/tracks/"+ID+"/"+I).then(function(r){return r.json()}).then(function(d){' +
-      'if(d.retry&&tries++<15){n.textContent="⏳ готовлю файл к стриму…";setTimeout(load,4000);return;}' +
-      'if(d.error)n.textContent="⚠ "+d.error;' +
-      'var A=d.tracks||[],S=d.subs||[];' +
-      'if(!d.ffmpeg){return;}' +
-      'var SI=S.filter(function(t){return ["subrip","ass","ssa","srt","mov_text","webvtt","text"].indexOf(t.codec)>=0}).map(function(t){return t.s});' +
-      'A.forEach(function(t){var o=document.createElement("option");o.value=t.a;o.textContent="♪ "+(t.lang&&t.lang!=="und"?t.lang:"дорожка "+(t.a+1))+(t.title?" — "+t.title:"")+" ["+t.codec+"]";aS.appendChild(o)});' +
-      'if(A.length>1){aS.value=A[0].a;aS.style.display=""}' +
-      'var go=function(){var a=aS.style.display!==""?aS.value:0;var s=sS.style.display!==""?sS.value:"";var t=v.currentTime>1?v.currentTime:0;play(B+"/hls/"+ID+"/"+I+"/master.m3u8?a="+a+(s!==""?"&si="+s:""),t)};' +
-      'if(SI.length){var o0=document.createElement("option");o0.value="";o0.textContent="без субтитров";sS.appendChild(o0);' +
-      'S.filter(function(t){return SI.indexOf(t.s)>=0}).forEach(function(t){var o=document.createElement("option");o.value=t.s;o.textContent="💬 "+(t.lang&&t.lang!=="und"?t.lang:"субтитры "+(t.s+1))+(t.title?" — "+t.title:"");sS.appendChild(o)});sS.value="";sS.style.display=""}' +
-      'aS.onchange=go;sS.onchange=go;go();' +
-      '}).catch(function(){if(tries++<15)setTimeout(load,4000)})};' +
-      'v.addEventListener("playing",function(){n.textContent="";ov.style.display="none"});' +
-      'setInterval(function(){fetch(B+"/api/status").then(function(r){return r.json()}).then(function(l){var t=l.find(function(x){return x.id===ID});if(t&&v.readyState<2)n.textContent="⏬ "+t.speed+" · пиры "+t.peers+(t.progress>0?" · "+t.progress+"%":"")}).catch(function(){})},2000);' +
-      'load();</script>');
+        res.end(`<!doctype html><meta charset=utf-8><title>${esc(f.name)}</title>
+<style>body{margin:0;background:#000;color:#ddd;font:14px system-ui;display:flex;flex-direction:column;height:100vh;box-sizing:border-box}
+.bar{display:flex;gap:10px;align-items:center;padding:6px 10px;flex-wrap:wrap}
+select{background:#1b1b1f;color:#ddd;border:1px solid #333;border-radius:6px;padding:4px;max-width:340px}
+video{flex:1;width:100%;min-height:0;background:#000}
+#ov{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.45);cursor:pointer;font-size:72px;color:#fff}</style>
+<div class=bar><b>${esc(f.name)}</b><select id=a style=display:none></select><select id=s style=display:none></select><span id=n></span></div>
+<video id=v controls autoplay playsinline src="${base}/s/${mV[1]}/${mV[2]}"></video>
+<div id=ov>▶</div>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js"></script>
+<script>
+var B=${JSON.stringify(base)},ID=${mV[1]},I=${mV[2]};
+var v=document.getElementById("v"),aS=document.getElementById("a"),sS=document.getElementById("s"),n=document.getElementById("n"),ov=document.getElementById("ov");
+ov.onclick=function(){v.play().catch(function(){});ov.style.display="none"};
+var tries=0,hls=null,cues=[],subUrl="";
+var cueDiv=document.createElement("div");cueDiv.style.cssText="position:fixed;left:5%;right:5%;bottom:8%;text-align:center;color:#fff;font-size:clamp(14px,2.5vw,28px);text-shadow:0 1px 4px #000;pointer-events:none;z-index:5";document.body.appendChild(cueDiv);
+var parseVtt=function(txt){var NL=String.fromCharCode(10);var C=[];txt.split(NL+NL).forEach(function(b){var m=b.match(/([0-9]+):([0-9]+):([0-9]+).([0-9]+) --> ([0-9]+):([0-9]+):([0-9]+).([0-9]+)/);if(!m)return;var t=function(h,mi,s,ms){return h*3600+mi*60+s+parseFloat("0."+ms)};var x=b.split(NL).filter(function(l){return l&&l.indexOf("-->")<0&&l.indexOf("WEBVTT")<0&&!/^[a-zA-Z-]+:/.test(l)}).join("<br>");C.push([t(+m[1],+m[2],+m[3],m[4]),t(+m[5],+m[6],+m[7],m[8]),x])});cues=C};
+var pollSub=function(){if(!subUrl)return;fetch(subUrl).then(function(r){return r.text()}).then(parseVtt).catch(function(){})};
+v.addEventListener("timeupdate",function(){var t=v.currentTime,a="";for(var i=cues.length-1;i>=0;i--){if(t>=cues[i][0]&&t<=cues[i][1]){a=cues[i][2];break}}cueDiv.innerHTML=a});
+setInterval(pollSub,20000);
+var play=function(u,seek){if(hls){try{hls.destroy()}catch(e){}hls=null}
+if(window.Hls&&Hls.isSupported()){hls=new Hls({startPosition:0,enableWorker:true,lowLatencyMode:false});hls.loadSource(u);hls.attachMedia(v);
+hls.on(Hls.Events.MANIFEST_PARSED,function(){v.play().catch(function(){ov.style.display="flex"});if(seek>1){var iv=setInterval(function(){if(v.duration>seek+3){v.currentTime=seek;clearInterval(iv)}},1000);setTimeout(function(){clearInterval(iv)},120000)}});
+hls.on(Hls.Events.ERROR,function(ev,d){if(d.fatal)n.textContent="⚠ HLS: "+d.type})}
+else{v.src=u;v.play().catch(function(){ov.style.display="flex"})}};
+var load=function(){fetch(B+"/api/tracks/"+ID+"/"+I).then(function(r){return r.json()}).then(function(d){
+if(d.retry&&tries++<15){n.textContent="⏳ готовлю файл к стриму…";setTimeout(load,4000);return;}
+if(d.error)n.textContent="⚠ "+d.error;
+var A=d.tracks||[],S=d.subs||[];
+if(!d.ffmpeg){return;}
+var SI=S.filter(function(t){return ["subrip","ass","ssa","srt","mov_text","webvtt","text"].indexOf(t.codec)>=0}).map(function(t){return t.s});
+A.forEach(function(t){var o=document.createElement("option");o.value=t.a;o.textContent="♪ "+(t.lang&&t.lang!=="und"?t.lang:"дорожка "+(t.a+1))+(t.title?" — "+t.title:"")+" ["+t.codec+"]";aS.appendChild(o)});
+if(A.length>1){aS.value=A[0].a;aS.style.display=""}
+if(SI.length){var o0=document.createElement("option");o0.value="";o0.textContent="без субтитров";sS.appendChild(o0);
+S.filter(function(t){return SI.indexOf(t.s)>=0}).forEach(function(t){var o=document.createElement("option");o.value=t.s;o.textContent="💬 "+(t.lang&&t.lang!=="und"?t.lang:"субтитры "+(t.s+1))+(t.title?" — "+t.title:"");sS.appendChild(o)});sS.value="";sS.style.display=""}
+var go=function(){var a=aS.style.display!==""?aS.value:0;var s=sS.style.display!==""?sS.value:"";var t=v.currentTime>1?v.currentTime:0;cues=[];cueDiv.innerHTML="";subUrl=s!==""?B+"/hls/"+ID+"/"+I+"/sub.vtt?a="+a+"&si="+s:"";if(subUrl)pollSub();play(B+"/hls/"+ID+"/"+I+"/master.m3u8?a="+a+(s!==""?"&si="+s:""),t)};
+aS.onchange=go;sS.onchange=go;go();
+}).catch(function(){if(tries++<15)setTimeout(load,4000)})};
+v.addEventListener("playing",function(){n.textContent="";ov.style.display="none"});
+setInterval(function(){fetch(B+"/api/status").then(function(r){return r.json()}).then(function(l){var t=l.find(function(x){return x.id===ID});if(t&&v.readyState<2)n.textContent="⏬ "+t.speed+" · пиры "+t.peers+(t.progress>0?" · "+t.progress+"%":"")}).catch(function(){})},2000);
+load();
+</script>`);
     return;
   }
   res.statusCode = 404; res.end('not found');
