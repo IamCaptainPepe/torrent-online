@@ -871,7 +871,9 @@ async function webReq(req, res, client, st, opts, cacheDir, base) {
       for (const i of si) args.push('-map', '0:s:' + i);
       if (si.length) args.push('-c:s', 'webvtt');
       const vsm = ['v:0', 'a:0']; for (let i = 0; i < si.length; i++) vsm.push('s:' + i);
-      args.push('-f', 'hls', '-hls_time', '4', '-hls_list_size', '12', '-hls_flags', 'delete_segments+independent_segments', '-hls_segment_type', 'mpegts', '-master_pl_name', 'master.m3u8', '-var_stream_map', vsm.join(','), '-hls_segment_filename', dir + '/seg-%v%a%s-%d.ts', dir + '/pl-%v%a%s.m3u8');
+      const segTpl = si.length ? 'seg-%s-%d.ts' : 'seg-%d.ts';
+      const plTpl = si.length ? 'pl-%s.m3u8' : 'pl.m3u8';
+      args.push('-f', 'hls', '-hls_time', '4', '-hls_list_size', '0', '-hls_playlist_type', 'event', '-hls_flags', 'independent_segments', '-hls_segment_type', 'mpegts', '-master_pl_name', 'master.m3u8', '-var_stream_map', vsm.join(','), '-hls_segment_filename', dir + '/' + segTpl, dir + '/' + plTpl);
       const proc = spawn(ffmpeg, args, { stdio: ['ignore', 'ignore', 'pipe'] });
       let ffErr = 0;
       proc.stderr.on('data', d => { if (ffErr < 3) { console.error('hls:', String(d).trim().slice(0, 200)); ffErr++; } });
@@ -909,12 +911,11 @@ async function webReq(req, res, client, st, opts, cacheDir, base) {
       'var v=document.getElementById("v"),aS=document.getElementById("a"),sS=document.getElementById("s"),n=document.getElementById("n"),ov=document.getElementById("ov");' +
       'ov.onclick=function(){v.play().catch(function(){});ov.style.display="none"};' +
       'var tries=0,hls=null;' +
-      'var NAT=v.canPlayType("application/vnd.apple.mpegurl")!==""&&(!window.Hls||!Hls.isSupported()||/Apple Computer/.test(navigator.vendor));' +
       
-      'var play=function(u){if(hls){try{hls.destroy()}catch(e){}hls=null}' +
-      'if(NAT){v.src=u;v.play().catch(function(){ov.style.display="flex"})}' +
-      'else if(window.Hls&&Hls.isSupported()){hls=new Hls({startPosition:0,enableWorker:true,lowLatencyMode:false});hls.loadSource(u);hls.attachMedia(v);' +
-      'hls.on(Hls.Events.MANIFEST_PARSED,function(){v.play().catch(function(){ov.style.display="flex"})});' +
+      
+      'var play=function(u,seek){if(hls){try{hls.destroy()}catch(e){}hls=null}' +
+      'if(window.Hls&&Hls.isSupported()){hls=new Hls({startPosition:0,enableWorker:true,lowLatencyMode:false});hls.loadSource(u);hls.attachMedia(v);' +
+      'hls.on(Hls.Events.MANIFEST_PARSED,function(){v.play().catch(function(){ov.style.display="flex"});if(seek>1){var iv=setInterval(function(){if(v.duration>seek+3){v.currentTime=seek;clearInterval(iv)}},1000);setTimeout(function(){clearInterval(iv)},120000)}});' +
       'hls.on(Hls.Events.ERROR,function(ev,d){if(d.fatal)n.textContent="⚠ HLS: "+d.type})}' +
       'else{v.src=u;v.play().catch(function(){ov.style.display="flex"})}};' +
       'var load=function(){fetch(B+"/api/tracks/"+ID+"/"+I).then(function(r){return r.json()}).then(function(d){' +
@@ -925,7 +926,7 @@ async function webReq(req, res, client, st, opts, cacheDir, base) {
       'var SI=S.filter(function(t){return ["subrip","ass","ssa","srt","mov_text","webvtt","text"].indexOf(t.codec)>=0}).map(function(t){return t.s});' +
       'A.forEach(function(t){var o=document.createElement("option");o.value=t.a;o.textContent="♪ "+(t.lang&&t.lang!=="und"?t.lang:"дорожка "+(t.a+1))+(t.title?" — "+t.title:"")+" ["+t.codec+"]";aS.appendChild(o)});' +
       'if(A.length>1){aS.value=A[0].a;aS.style.display=""}' +
-      'var go=function(){var a=aS.style.display!==""?aS.value:0;var s=sS.style.display!==""?sS.value:"";play(B+"/hls/"+ID+"/"+I+"/master.m3u8?a="+a+(s!==""?"&si="+s:""))};' +
+      'var go=function(){var a=aS.style.display!==""?aS.value:0;var s=sS.style.display!==""?sS.value:"";var t=v.currentTime>1?v.currentTime:0;play(B+"/hls/"+ID+"/"+I+"/master.m3u8?a="+a+(s!==""?"&si="+s:""),t)};' +
       'if(SI.length){var o0=document.createElement("option");o0.value="";o0.textContent="без субтитров";sS.appendChild(o0);' +
       'S.filter(function(t){return SI.indexOf(t.s)>=0}).forEach(function(t){var o=document.createElement("option");o.value=t.s;o.textContent="💬 "+(t.lang&&t.lang!=="und"?t.lang:"субтитры "+(t.s+1))+(t.title?" — "+t.title:"");sS.appendChild(o)});sS.value="";sS.style.display=""}' +
       'aS.onchange=go;sS.onchange=go;go();' +
