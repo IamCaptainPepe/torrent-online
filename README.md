@@ -1,7 +1,7 @@
 # TorrentOnline
 
-**RU:** Стрим из `.torrent`, `magnet:` и ссылки на `.torrent` в **VLC** или прямо в **браузер**. Один процесс VLC на весь плейлист. Кэш чистится после выхода (отключается флагом).
-**EN:** Stream from `.torrent`, `magnet:` and `.torrent` URLs to **VLC** or straight to the **browser**. One VLC process for the whole playlist. Cache is wiped on exit (disable with a flag).
+**RU:** Стрим из `.torrent`, `magnet:` и ссылки на `.torrent` в **VLC** или прямо в **браузер**. Один процесс VLC на весь плейлист. В окне кэш остаётся до «Очистить кэш»; в CLI удаляется после выхода (отключается флагом `--keep-cache`).
+**EN:** Stream from `.torrent`, `magnet:` and `.torrent` URLs to **VLC** or straight to the **browser**. One VLC process for the whole playlist. The window keeps its cache until Clear cache; CLI wipes it on exit (disable with `--keep-cache`).
 
 [Русский](#русский) · [English](#english)
 
@@ -49,8 +49,8 @@ node wtui.js "https://example.com/file.torrent"
 
 Кэш по умолчанию: `~/Movies/WebTorrent`. В окне он остаётся после выхода и после кнопки «Закрыть». Стирает его только «Очистить кэш». Язык страницы — кнопки RU и EN (по умолчанию русский). В режиме `--cli` папка по-прежнему удаляется при выходе, если нет `--keep-cache`.
 
-## Возможности (v1.4)
-- 🔎 Поиск торрентов прямо в меню: **Rutor.info (по-русски)**, TPB.party (по-английски), опционально 1337x API
+## Возможности (v1.7.14)
+- 🔎 Поиск торрентов прямо в меню: **Rutor.info (по-русски)**, TPB.party (по-английски)
 - 🌐 Стрим в браузер: страница с плеером на `/`, режим `--lan` с токеном
 - 📺 Субтитры из торрента (`.srt/.ass/.ssa/.vtt`) → `--sub-file=` в VLC
 - ▶️ `--resume`: позиция сохраняется в `~/.config/torrent-online/state.json`
@@ -108,7 +108,7 @@ docker run -p 8123:8123 torrent-online node wtui.js "magnet:?xt=..." --lan --no-
 
 ## Требования
 - macOS 11+ / Linux
-- Node.js ≥ 18
+- Node.js ≥ 22
 - VLC (`/Applications/VLC.app` или в PATH) — не нужен с `--no-vlc`
 
 ## Частые вопросы
@@ -160,8 +160,8 @@ node wtui.js "https://example.com/file.torrent"
 
 Default cache: `~/Movies/WebTorrent`. The window keeps it after exit and after Quit. Only Clear cache deletes it. The page language is the RU and EN buttons (Russian by default). In `--cli` mode the folder is still removed on exit unless `--keep-cache` is set.
 
-## Features (v1.4)
-- 🔎 Built-in torrent search: **Rutor.info (Russian)**, TPB.party (English), optional 1337x API
+## Features (v1.7.14)
+- 🔎 Built-in torrent search: **Rutor.info (Russian)**, TPB.party (English)
 - 🌐 Browser streaming: player page at `/`, `--lan` mode with a token
 - 📺 Subtitles from the torrent (`.srt/.ass/.ssa/.vtt`) → `--sub-file=` in VLC
 - ▶️ `--resume`: playback position saved in `~/.config/torrent-online/state.json`
@@ -219,7 +219,7 @@ docker run -p 8123:8123 torrent-online node wtui.js "magnet:?xt=..." --lan --no-
 
 ## Requirements
 - macOS 11+ / Linux
-- Node.js ≥ 18
+- Node.js ≥ 22
 - VLC (`/Applications/VLC.app` or in PATH) — not needed with `--no-vlc`
 
 ## FAQ

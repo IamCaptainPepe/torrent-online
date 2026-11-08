@@ -2,6 +2,20 @@
 
 Формат — [Keep a Changelog](https://keepachangelog.com/ru/1.1.0/), версии — [Semantic Versioning](https://semver.org/lang/ru/).
 
+## [1.7.14] — 2026-11-08
+**RU:** Повторная загрузка того же `.torrent` больше не игнорируется молча: возвращается существующая карточка с `dup: true`, id не разъезжаются. Magnet виден в списке сразу, ещё до метаданных; при таймауте или ошибке карточка показывает причину. Невалидный magnet отклоняется с HTTP 400, а не висит «добавляю…».
+**EN:** Re-uploading the same `.torrent` no longer gets silently ignored: the existing card is returned with `dup: true`, and ids stay in sync. A magnet appears in the list immediately, before metadata; on timeout or error the card shows why. An invalid magnet is rejected with HTTP 400 instead of hanging on «adding…».
+- 🐛 `/api/add-file` не проверял дубли: `client.add()` для существующего infoHash не даёт события, id из очереди терялся, следующие торренты получали чужие id. Дедуп теперь до добавления, по infoHash из `parse-torrent`
+- 🐛 `st.pending` заменён на регистрацию торрента сразу при добавлении: карточка pending-магнита видна, порядок id не зависит от того, кто раньше получил метаданные
+- 🐛 Ошибки `/api/add` и `/api/add-file` больше не стираются первым же `poll()`
+- 🐛 `readBody`: битый UTF-8 в длинном magnet, зависание на теле >100 КБ, лимит 5 МБ для `.torrent` через общий `readRawBody`
+- 🐛 `searchRutor`: падение всего поиска, если у строки нет размера; терялась половина выдачи (`gai`/`tum`) и не читались сиды из нового HTML
+- 🐛 `detectVLCPath()` возвращал строку `vlc` даже без VLC — теперь `null`, `/api/vlc` отдаёт `no-vlc`
+- 🐛 Docker: `npm ci` падал без `vendor/ip-set`, в образ добавлен ffmpeg для HLS; Tauri: не копировал `package-lock.json` и `vendor`, не переустанавливал зависимости при смене версии
+- 🐛 Запускалка больше не убивает чужой процесс по устаревшему `server.pid` / занятому порту: проверяет, что это `wtui.js`
+- ➕ `/favicon.ico` → 204, UA версии из `package.json`, таймаут метаданных в веб-режиме
+- ➕ `parse-torrent` в зависимостях
+
 ## [1.7.13] — 2026-10-04
 **RU:** Повторное открытие больше не гасит сервер. Старая вкладка «сервер остановлен» его не трогает, а сам сервер не умирает вместе с запускалкой.
 **EN:** Opening the app again no longer stops the server. The old «server stopped» tab leaves it alone, and the server stays up after the launcher exits.

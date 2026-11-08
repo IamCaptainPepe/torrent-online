@@ -93,9 +93,18 @@ port_busy() {
   command -v lsof >/dev/null 2>&1 && lsof -nP -iTCP:8123 -sTCP:LISTEN -t >/dev/null 2>&1
 }
 stop_old() {
-  if [ -f "${DEPS}/server.pid" ]; then kill "$(cat "${DEPS}/server.pid")" 2>/dev/null || true; fi
+  # PID из старого server.pid мог достаться другому процессу — убиваем только свой node.
+  local pid cmd
+  if [ -f "${DEPS}/server.pid" ]; then
+    pid="$(cat "${DEPS}/server.pid" 2>/dev/null || true)"
+    cmd="$(ps -p "${pid}" -o command= 2>/dev/null || true)"
+    case "${cmd}" in *wtui.js*) kill "${pid}" 2>/dev/null || true ;; esac
+  fi
   if command -v lsof >/dev/null 2>&1; then
-    lsof -nP -iTCP:8123 -sTCP:LISTEN -t 2>/dev/null | xargs kill 2>/dev/null || true
+    for pid in $(lsof -nP -iTCP:8123 -sTCP:LISTEN -t 2>/dev/null || true); do
+      cmd="$(ps -p "${pid}" -o command= 2>/dev/null || true)"
+      case "${cmd}" in *wtui.js*) kill "${pid}" 2>/dev/null || true ;; esac
+    done
   fi
 }
 # Второй щелчок не должен убить сервер, который поднимает первый.

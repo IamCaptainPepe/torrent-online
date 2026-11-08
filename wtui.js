@@ -12,6 +12,7 @@ import { fileURLToPath } from 'url';
 import { createRequire } from 'node:module';
 import { select, checkbox, input, confirm, Separator } from '@inquirer/prompts';
 import WebTorrent from 'webtorrent';
+import parseTorrent from 'parse-torrent';
 
 const require = createRequire(import.meta.url);
 const PKG_VERSION = JSON.parse(fs.readFileSync(new URL('./package.json', import.meta.url), 'utf8')).version;
@@ -73,7 +74,7 @@ const META_TIMEOUT_MS = 60_000;
 const DEFAULT_CACHE = path.join(os.homedir(), 'Movies', 'WebTorrent');
 const WATCH_DIR = path.join(os.homedir(), 'Downloads', 'torrent-online-watch');
 const STATE_FILE = path.join(os.homedir(), '.config', 'torrent-online', 'state.json');
-const UA = 'Mozilla/5.0 (X11; Linux x86_64) torrent-online/1.4';
+const UA = 'Mozilla/5.0 (X11; Linux x86_64) torrent-online/' + PKG_VERSION;
 
 const VIDEO_EXT = new Set(['.mp4', '.m4v', '.mkv', '.mov', '.avi', '.webm', '.mpg', '.mpeg']);
 const SUB_EXT = new Set(['.srt', '.ass', '.ssa', '.vtt']);
@@ -193,10 +194,13 @@ function detectFFBin(name) {
 function detectVLCPath() {
   const macVLC = '/Applications/VLC.app/Contents/MacOS/VLC';
   if (fs.existsSync(macVLC)) return macVLC;
-  return 'vlc';
+  const r = spawnSync('which', ['vlc'], { encoding: 'utf8', timeout: 3000 });
+  const p = (r.stdout || '').trim();
+  return p && fs.existsSync(p) ? p : null;
 }
 
 function checkVlc(bin) {
+  if (!bin) throw new Error('VLC не найден. Установите VLC или запускайте с --no-vlc и смотрите в браузере.');
   const r = spawnSync(bin, ['--version'], { encoding: 'utf8', timeout: 5000 });
   if (r.error || r.status !== 0) {
     throw new Error(`VLC не найден/не запускается ("${bin}"). Установите VLC или смотрите в браузере: --no-vlc (а при --no-vlc уже открыта страница).`);
@@ -384,14 +388,17 @@ async function searchRutor(q) {
   }
   if (lastErr) throw lastErr;
   const out = [];
-  for (const row of html.split('<tr class="gai">').slice(1, 26)) {
+  // Rutor чередует class="gai" и class="tum" — берём оба, иначе теряется половина строк.
+  for (const m of html.matchAll(/<tr class="(?:gai|tum)">([\s\S]*?)<\/tr>/g)) {
+    const row = m[1];
     const magRaw = /href="(magnet:[^"]+)"/.exec(row)?.[1];
     const name = decodeXml(/<a href="\/torrent\/\d+\/[^"]*">([^<]+)<\/a>/.exec(row)?.[1] || '');
     if (!magRaw || !name) continue;
-    const size = decodeXml(/<td align="right">([\d.,]+)&nbsp;(GB|MB|KB|TB)/.exec(row)?.[0].replace('<td align="right">', '') || '')
-      .replace(/&nbsp;/g, ' ').trim();
-    const seeds = Number(decodeXml(/<td align="center">\s*<img[^>]*u\.png[^>]*>\s*([\d.,]+)/.exec(row)?.[1] || '0').replace(/[^\d]/g, '')) || 0;
+    const sm = /<td align="right">([\d.,]+)&nbsp;(GB|MB|KB|TB)/.exec(row);
+    const size = sm ? decodeXml(sm[0].replace('<td align="right">', '')).replace(/&nbsp;/g, ' ').trim() : '';
+    const seeds = Number((/class="green">[\s\S]{0,200}?&nbsp;([\d.,]+)/.exec(row)?.[1] || '0').replace(/[^\d]/g, '')) || 0;
     out.push({ name, mag: decodeXml(magRaw), size, seeds, src: 'Rutor' });
+    if (out.length >= 25) break;
   }
   return out;
 }
@@ -595,9 +602,6 @@ button:hover{background:#2a3c58}
 .bar div{height:100%;background:linear-gradient(90deg,#3b82f6,#7fd4ff);border-radius:3px}
 .fin{display:block;padding:4px 2px;cursor:pointer;color:var(--mut);font-size:14px}
 .fin input{margin-right:8px;accent-color:#3b82f6}
-.fin .play{margin-left:6px;padding:0 8px;font-size:12px}
-.picks{margin:6px 0 2px}
-.picks button{font-size:12px;padding:3px 10px}
 body.drop{outline:3px dashed #3b82f6;outline-offset:-10px;background:rgba(59,130,246,.06)}
 .fin .play{margin-left:6px;padding:0 8px;font-size:12px}
 .picks{margin:6px 0 2px}
@@ -621,8 +625,8 @@ video{width:100vw;height:100vh;background:#000;display:block;margin:0}
 var BASE="__BASE__";
 var BOOT="__BOOT__";
 var DICT={
-ru:{phSearch:'Поиск: пацаны 4 сезон · breaking bad',search:'Искать',phMag:'Вставь magnet:?xt=urn:btih:…',addMag:'Добавить magnet',fileBtn:'Файл .torrent',lead:'Поток идёт сразу, целиком ждать не нужно. У каждого файла кнопки VLC и Браузер. Кэш при выходе не удаляется — только кнопкой «Очистить кэш». «Закрыть» останавливает сервер и не трогает скачанное.',clear:'Очистить кэш',quit:'Закрыть',torrents:'Торренты',adding:'добавляю в клиент…',torrent:'торрент',searching:'Ищу…',emptyFind:'Ничего не найдено',searchErr:'Ошибка поиска',needMag:'Нужна ссылка, которая начинается с magnet:',clearAsk:'Удалить скачанные файлы из кэша? Список торрентов тоже очистится.',cleared:'Кэш очищен',clearFail:'Не удалось очистить кэш',uploading:'Загружаю',uploadErr:'Ошибка загрузки',empty:'Пусто. Найди торрент и кликни по строке.',browser:'Браузер',all:'выбрать все',none:'снять все',waitMeta:'ждём метаданные…',peers:'пиры',hint:'Отметь серии галочками — ▶ VLC / ▶ Браузер запустят выбранное. Одна серия стартует автоматически.',del:'✕ удалить',quitAsk:'Остановить сервер? Скачанные файлы останутся в кэше.',quitDone:'Сервер остановлен. Открой TorrentOnline ещё раз — откроется новая вкладка. Эту можно закрыть. Скачанное на месте.',quitFail:'Сервер всё ещё отвечает.',quitSoon:'Сервер только открылся. Нажми «Закрыть» ещё раз через пару секунд.',addErr:'Ошибка /api/add','empty-file':'пустой файл','need-source':'нужна ссылка или файл','no-torrent':'нет торрента','no-file':'нет файла','pick-files':'выбери файлы','no-vlc':'VLC не найден'},
-en:{phSearch:'Search: the boys season 4 · breaking bad',search:'Search',phMag:'Paste magnet:?xt=urn:btih:…',addMag:'Add magnet',fileBtn:'.torrent file',lead:'Playback starts right away. You do not wait for the full download. Each file has VLC and Browser buttons. Exit does not delete the cache. Only Clear cache does. Quit stops the server and leaves downloads on disk.',clear:'Clear cache',quit:'Quit',torrents:'Torrents',adding:'adding to the client…',torrent:'torrent',searching:'Searching…',emptyFind:'Nothing found',searchErr:'Search failed',needMag:'The link must start with magnet:',clearAsk:'Delete downloaded files from the cache? The torrent list will be cleared too.',cleared:'Cache cleared',clearFail:'Could not clear the cache',uploading:'Uploading',uploadErr:'Upload failed',empty:'Nothing here yet. Search for a torrent and click a row.',browser:'Browser',all:'select all',none:'select none',waitMeta:'waiting for metadata…',peers:'peers',hint:'Tick the episodes. VLC and Browser play the selection. A single episode starts on its own.',del:'✕ remove',quitAsk:'Stop the server? Downloaded files stay in the cache.',quitDone:'Server stopped. Open TorrentOnline again and a new tab will open. You can close this one. Downloads stay on disk.',quitFail:'The server is still running.',quitSoon:'The server just opened. Press Quit again in a couple of seconds.',addErr:'/api/add error','empty-file':'empty file','need-source':'a link or a file is required','no-torrent':'no such torrent','no-file':'no such file','pick-files':'pick files first','no-vlc':'VLC was not found'}
+ru:{phSearch:'Поиск: пацаны 4 сезон · breaking bad',search:'Искать',phMag:'Вставь magnet:?xt=urn:btih:…',addMag:'Добавить magnet',fileBtn:'Файл .torrent',lead:'Поток идёт сразу, целиком ждать не нужно. У каждого файла кнопки VLC и Браузер. Кэш при выходе не удаляется — только кнопкой «Очистить кэш». «Закрыть» останавливает сервер и не трогает скачанное.',clear:'Очистить кэш',quit:'Закрыть',torrents:'Торренты',adding:'добавляю в клиент…',torrent:'торрент',searching:'Ищу…',emptyFind:'Ничего не найдено',searchErr:'Ошибка поиска',needMag:'Нужна ссылка, которая начинается с magnet:',clearAsk:'Удалить скачанные файлы из кэша? Список торрентов тоже очистится.',cleared:'Кэш очищен',clearFail:'Не удалось очистить кэш',uploading:'Загружаю',uploadErr:'Ошибка загрузки',empty:'Пусто. Найди торрент и кликни по строке.',browser:'Браузер',all:'выбрать все',none:'снять все',waitMeta:'ждём метаданные…','meta-timeout':'метаданные не пришли — проверь magnet/трекеры',peers:'пиры',hint:'Отметь серии галочками — ▶ VLC / ▶ Браузер запустят выбранное. Одна серия стартует автоматически.',del:'✕ удалить',quitAsk:'Остановить сервер? Скачанные файлы останутся в кэше.',quitDone:'Сервер остановлен. Открой TorrentOnline ещё раз — откроется новая вкладка. Эту можно закрыть. Скачанное на месте.',quitFail:'Сервер всё ещё отвечает.',quitSoon:'Сервер только открылся. Нажми «Закрыть» ещё раз через пару секунд.',addErr:'Ошибка /api/add','empty-file':'пустой файл','need-source':'нужна ссылка или файл','no-torrent':'нет торрента','no-file':'нет файла','pick-files':'выбери файлы','no-vlc':'VLC не найден'},
+en:{phSearch:'Search: the boys season 4 · breaking bad',search:'Search',phMag:'Paste magnet:?xt=urn:btih:…',addMag:'Add magnet',fileBtn:'.torrent file',lead:'Playback starts right away. You do not wait for the full download. Each file has VLC and Browser buttons. Exit does not delete the cache. Only Clear cache does. Quit stops the server and leaves downloads on disk.',clear:'Clear cache',quit:'Quit',torrents:'Torrents',adding:'adding to the client…',torrent:'torrent',searching:'Searching…',emptyFind:'Nothing found',searchErr:'Search failed',needMag:'The link must start with magnet:',clearAsk:'Delete downloaded files from the cache? The torrent list will be cleared too.',cleared:'Cache cleared',clearFail:'Could not clear the cache',uploading:'Uploading',uploadErr:'Upload failed',empty:'Nothing here yet. Search for a torrent and click a row.',browser:'Browser',all:'select all',none:'select none',waitMeta:'waiting for metadata…','meta-timeout':'metadata did not arrive — check the magnet/trackers',peers:'peers',hint:'Tick the episodes. VLC and Browser play the selection. A single episode starts on its own.',del:'✕ remove',quitAsk:'Stop the server? Downloaded files stay in the cache.',quitDone:'Server stopped. Open TorrentOnline again and a new tab will open. You can close this one. Downloads stay on disk.',quitFail:'The server is still running.',quitSoon:'The server just opened. Press Quit again in a couple of seconds.',addErr:'/api/add error','empty-file':'empty file','need-source':'a link or a file is required','no-torrent':'no such torrent','no-file':'no such file','pick-files':'pick files first','no-vlc':'VLC was not found'}
 };
 function lang(){try{return localStorage.getItem('to-lang')==='en'?'en':'ru'}catch(e){return 'ru'}}
 function tr(k){var d=DICT[lang()]||DICT.ru;if(d&&d[k]!=null)return d[k];return (DICT.ru&&DICT.ru[k]!=null)?DICT.ru[k]:k}
@@ -636,7 +640,7 @@ var dn=(/dn=([^&]*)/.exec(mag)||[,''])[1];try{dn=decodeURIComponent(dn.replace(/
 var ph=document.createElement('div');ph.className='card';
 ph.innerHTML='<div class=tname>⏳ '+esc(dn||tr('torrent'))+'</div><div class=tmeta>'+esc(tr('adding'))+'</div>';
 box.prepend(ph);
-api('/api/add',{source:mag}).then(function(d){if(d&&d.error){ph.innerHTML='<div class=tname>⚠ '+esc(errText(d.error))+'</div>';}poll();toTorrents();}).catch(function(e){ph.innerHTML='<div class=tname>⚠ '+esc(tr('addErr'))+': '+esc(e&&e.message||e)+'</div>';});
+api('/api/add',{source:mag}).then(function(d){if(d&&d.error){var m='⚠ '+esc(errText(d.error));if(ph.parentNode)ph.parentNode.removeChild(ph);var n=document.getElementById('notes');if(n)n.innerHTML='<div class=note>'+m+'</div>';return;}poll();toTorrents();}).catch(function(e){if(ph.parentNode)ph.parentNode.removeChild(ph);var n=document.getElementById('notes');if(n)n.innerHTML='<div class=note>⚠ '+esc(tr('addErr'))+': '+esc(e&&e.message||e)+'</div>';});
 }
 function doSearch(){var q=document.getElementById('q').value.trim();if(!q)return;if(q.indexOf('magnet:')===0){addTorrent(q);document.getElementById('q').value='';return;}var box=document.getElementById('results');box.innerHTML='<div class=note>'+esc(tr('searching'))+'</div>';
 api('/api/search?q='+encodeURIComponent(q)).then(function(d){
@@ -652,14 +656,14 @@ document.getElementById('mag').onclick=function(){var m=document.getElementById(
 document.getElementById('magin').addEventListener('keydown',function(e){if(e.key==='Enter')document.getElementById('mag').click();});
 document.getElementById('clr').onclick=function(){if(!confirm(tr('clearAsk')))return;api('/api/clear-cache',{ok:1}).then(function(){document.getElementById('notes').innerHTML='<div class=note>'+esc(tr('cleared'))+'</div>';poll();}).catch(function(){document.getElementById('notes').innerHTML='<div class=note>'+esc(tr('clearFail'))+'</div>';});};
 function showStopped(){if(pollTimer){clearInterval(pollTimer);pollTimer=null;}document.body.innerHTML='<p style="margin:0;padding:28px;font:16px/1.45 -apple-system,sans-serif;color:#e8ecf1">'+esc(tr('quitDone'))+'</p>';document.body.style.background='#0f1115';}
-document.getElementById('quit').onclick=function(ev){if(ev&&ev.isTrusted===false)return;if(!confirm(tr('quitAsk')))return;var send=function(){fetch(BASE+'/api/quit',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({boot:BOOT})}).then(function(r){if(r.status===409){return r.json().then(function(d){if(d&&d.error==='starting'){if(!send.retried){send.retried=1;setTimeout(send,2000);return;}var n=document.getElementById('notes');if(n)n.innerHTML='<div class=note>'+esc(tr('quitSoon'))+'</div>';return;}var n2=document.getElementById('notes');if(n2)n2.innerHTML='<div class=note>'+esc(tr('quitFail'))+'</div>';});}showStopped();}).catch(function(){showStopped();});};send();};
+document.getElementById('quit').onclick=function(ev){if(ev&&ev.isTrusted===false)return;if(!confirm(tr('quitAsk')))return;var send=function(){fetch(BASE+'/api/quit',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({boot:BOOT})}).then(function(r){if(r.status===409){return r.json().then(function(d){if(d&&d.error==='starting'){if(!send.retried){send.retried=1;setTimeout(send,8500);return;}var n=document.getElementById('notes');if(n)n.innerHTML='<div class=note>'+esc(tr('quitSoon'))+'</div>';return;}var n2=document.getElementById('notes');if(n2)n2.innerHTML='<div class=note>'+esc(tr('quitFail'))+'</div>';});}showStopped();}).catch(function(){showStopped();});};send();};
 function setLang(code){try{localStorage.setItem('to-lang',code)}catch(e){}applyLang();poll();}
 document.getElementById('lang-ru').onclick=function(){setLang('ru');};
 document.getElementById('lang-en').onclick=function(){setLang('en');};
 document.getElementById('tpath').onclick=function(){document.getElementById('tt').click();};
 document.getElementById('tt').onchange=function(){if(this.files&&this.files[0])uploadFile(this.files[0]);this.value='';};
 function uploadFile(f){var nb=document.getElementById('notes');nb.innerHTML='<div class=note>⏳ '+esc(tr('uploading'))+' '+esc(f.name)+'…</div>';
-fetch(BASE+'/api/add-file',{method:'POST',headers:{'content-type':'application/octet-stream'},body:f}).then(function(r){return r.json()}).then(function(d){nb.innerHTML=d.error?'<div class=note>⚠ '+esc(errText(d.error))+'</div>':'';poll();toTorrents();}).catch(function(){nb.innerHTML='<div class=note>⚠ '+esc(tr('uploadErr'))+'</div>';});}
+fetch(BASE+'/api/add-file',{method:'POST',headers:{'content-type':'application/octet-stream'},body:f}).then(function(r){return r.json()}).then(function(d){if(d&&d.error){nb.innerHTML='<div class=note>⚠ '+esc(errText(d.error))+'</div>';return;}nb.innerHTML='';poll();toTorrents();}).catch(function(){nb.innerHTML='<div class=note>⚠ '+esc(tr('uploadErr'))+'</div>';});}
 document.addEventListener('dragover',function(e){e.preventDefault();document.body.classList.add('drop');});
 document.addEventListener('dragleave',function(e){if(e.target===document.body||e.relatedTarget===null)document.body.classList.remove('drop');});
 document.addEventListener('drop',function(e){e.preventDefault();document.body.classList.remove('drop');
@@ -677,7 +681,9 @@ var wi=first?first.i:0;
 var nSel=t.files.filter(function(f){return f.selected;}).length;
 var bar=t.ready?t.progress:0;
 var hint=(t.ready&&nSel===0)?'<div class=note>'+esc(tr('hint'))+'</div>':'';
-return '<div class=card><div class=tname>'+esc(t.name)+'</div><div class=tmeta>'+(t.ready?'⏬ '+t.progress+'% · '+esc(t.speed)+' · '+esc(tr('peers'))+' '+t.peers:'⏳ '+esc(tr('waitMeta')))+'</div><div class=bar><div style=width:'+bar+'%></div></div>'+(t.files.length>1?'<div class=picks><button data-act=all data-id='+t.id+'>'+esc(tr('all'))+'</button><button data-act=none data-id='+t.id+'>'+esc(tr('none'))+'</button></div>':'')+'<div class=files>'+files+'</div>'+hint+'<div class=acts><button data-act=vlc data-id='+t.id+'>▶ VLC'+(nSel?' ('+nSel+')':'')+'</button><button data-act=web data-id='+t.id+' data-i='+wi+'>▶ '+esc(tr('browser'))+'</button><button class=del data-act=del data-id='+t.id+'>'+esc(tr('del'))+'</button></div></div>';
+var meta=t.error?'⚠ '+esc(errText(t.error)):(t.ready?'⏬ '+t.progress+'% · '+esc(t.speed)+' · '+esc(tr('peers'))+' '+t.peers:'⏳ '+esc(tr('waitMeta')));
+var acts=t.ready?'<div class=acts><button data-act=vlc data-id='+t.id+'>▶ VLC'+(nSel?' ('+nSel+')':'')+'</button><button data-act=web data-id='+t.id+' data-i='+wi+'>▶ '+esc(tr('browser'))+'</button><button class=del data-act=del data-id='+t.id+'>'+esc(tr('del'))+'</button></div>':'<div class=acts><button class=del data-act=del data-id='+t.id+'>'+esc(tr('del'))+'</button></div>';
+return '<div class=card><div class=tname>'+esc(t.name)+'</div><div class=tmeta>'+meta+'</div><div class=bar><div style=width:'+bar+'%></div></div>'+(t.ready&&t.files.length>1?'<div class=picks><button data-act=all data-id='+t.id+'>'+esc(tr('all'))+'</button><button data-act=none data-id='+t.id+'>'+esc(tr('none'))+'</button></div>':'')+'<div class=files>'+files+'</div>'+hint+acts+'</div>';
 }).join('');
 [].forEach.call(box.querySelectorAll('.fin input'),function(cb){cb.onchange=function(){var id=+cb.getAttribute('data-id');var idx=[].filter.call(box.querySelectorAll('.fin input[data-id="'+id+'"]'),function(x){return x.checked;}).map(function(x){return +x.getAttribute('data-i');});api('/api/select',{id:id,indices:idx});};});
 [].forEach.call(box.querySelectorAll('button[data-act]'),function(b){b.onclick=function(ev){ev.preventDefault();ev.stopPropagation();var id=+b.getAttribute('data-id');var act=b.getAttribute('data-act');
@@ -695,13 +701,40 @@ poll();
 pollTimer=setInterval(poll,1500);
 </script></body></html>`;
 
-function readBody(req) {
+function readRawBody(req, limit = 1e5) {
   return new Promise((resolve, reject) => {
-    let d = '';
-    req.on('data', c => { d += c; if (d.length > 1e5) req.destroy(); });
-    req.on('end', () => { try { resolve(d ? JSON.parse(d) : {}); } catch (e) { reject(e); } });
-    req.on('error', reject);
+    const chunks = [];
+    let size = 0;
+    let done = false;
+    const fail = err => {
+      if (done) return;
+      done = true;
+      reject(err);
+    };
+    req.on('data', c => {
+      if (done) return;
+      size += c.length;
+      if (size > limit) {
+        fail(new Error('body too large'));
+        req.destroy();
+        return;
+      }
+      chunks.push(c);
+    });
+    req.on('end', () => {
+      if (done) return;
+      done = true;
+      resolve(Buffer.concat(chunks));
+    });
+    req.on('error', fail);
   });
+}
+
+async function readBody(req, limit = 1e5) {
+  const buf = await readRawBody(req, limit);
+  const d = buf.toString('utf8');
+  if (!d) return {};
+  return JSON.parse(d);
 }
 
 const HLS_SEG = 4;
@@ -945,6 +978,12 @@ async function webReq(req, res, client, st, opts, cacheDir, base) {
     p = p.slice(base.length) || '/';
   }
   const json = (code, obj) => { res.statusCode = code; res.setHeader('Content-Type', 'application/json; charset=utf-8'); res.end(JSON.stringify(obj)); };
+  // POST с чужого сайта (text/plain не вызывает preflight) не должен управлять клиентом.
+  if (req.method === 'POST' && req.headers.origin) {
+    let originHost = '';
+    try { originHost = new URL(req.headers.origin).host; } catch {}
+    if (originHost !== req.headers.host) return json(403, { error: 'forbidden' });
+  }
 
   if (p === '/' || p === '') {
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -962,6 +1001,7 @@ async function webReq(req, res, client, st, opts, cacheDir, base) {
     return;
   }
   if (p === '/api/health') return json(200, { ok: true, version: PKG_VERSION });
+  if (p === '/favicon.ico') { res.statusCode = 204; res.end(); return; }
   if (p === '/api/quit' && req.method === 'POST') {
     const b = await readBody(req).catch(() => ({}));
     // Сразу после старта старая вкладка ещё может прислать «Закрыть». Это не клик пользователя.
@@ -990,41 +1030,28 @@ async function webReq(req, res, client, st, opts, cacheDir, base) {
     return json(200, { items, notes });
   }
   if (p === '/api/add-file' && req.method === 'POST') {
-    const chunks = [];
-    let size = 0;
-    await new Promise((resolve, reject) => {
-      req.on('data', c => { chunks.push(c); size += c.length; if (size > 5e6) { req.destroy(); reject(new Error('файл слишком большой')); } });
-      req.on('end', resolve);
-      req.on('error', reject);
-    });
-    const buf = Buffer.concat(chunks);
+    let buf;
+    try { buf = await readRawBody(req, 5e6); }
+    catch (e) { return json(400, { error: String((e && e.message) || e) }); }
     if (!buf.length) return json(400, { error: 'empty-file' });
-    const id = st.nextId++;
-    st.pending.push(id);
-    try { client.add(buf, { path: cacheDir }); }
-    catch (e) { st.pending.pop(); return json(400, { error: String((e && e.message) || e) }); }
-    return json(200, { id });
+    try { return json(200, await st.addTorrent(buf)); }
+    catch (e) { return json(400, { error: String((e && e.message) || e) }); }
   }
   if (p === '/api/add' && req.method === 'POST') {
-    const b = await readBody(req);
+    let b;
+    try { b = await readBody(req); }
+    catch (e) { return json(400, { error: String((e && e.message) || e) }); }
     const source = String(b.source || '');
     if (!source) return json(400, { error: 'need-source' });
-    const btih = (source.match(/btih:([0-9a-f]{40})/i) || [])[1];
-    if (btih) {
-      const ex = [...st.torrents.values()].find(e => e.t.infoHash === btih.toLowerCase());
-      if (ex) return json(200, { id: ex.id, dup: true });
-    }
-    const id = st.nextId++;
-    st.pending.push(id);
-    try { client.add(source, { path: cacheDir }); }
-    catch (e) { st.pending.pop(); return json(400, { error: String((e && e.message) || e) }); }
-    return json(200, { id });
+    try { return json(200, await st.addTorrent(source)); }
+    catch (e) { return json(400, { error: String((e && e.message) || e) }); }
   }
   if (p === '/api/status') {
     const list = [...st.torrents.values()].map(e => ({
       id: e.id,
       name: e.t.name || '…',
       ready: !!e.t.ready,
+      error: e.error || null,
       progress: Math.round((e.t.progress || 0) * 100),
       speed: fmtBytes(e.t.downloadSpeed) + '/s',
       peers: e.t._peers?.size ?? 0,
@@ -1070,7 +1097,13 @@ async function webReq(req, res, client, st, opts, cacheDir, base) {
     const b = await readBody(req);
     const id = Number(b.id);
     const e = st.torrents.get(id);
-    if (e) { st.torrents.delete(id); try { await new Promise(r => e.t.destroy(r)); } catch {} }
+    if (e) {
+      if (e.timer) clearTimeout(e.timer);
+      if (e.hash) st.pendingHashes.delete(e.hash);
+      if (e.t.infoHash) st.pendingHashes.delete(String(e.t.infoHash).toLowerCase());
+      st.torrents.delete(id);
+      try { await new Promise(r => e.t.destroy(r)); } catch {}
+    }
     dropHlsFor(hls, id + '-');
     return json(200, { ok: true });
   }
@@ -1081,8 +1114,9 @@ async function webReq(req, res, client, st, opts, cacheDir, base) {
     hls.probe.clear();
     hls.inflight.clear();
     try { fs.rmSync(hls.root, { recursive: true, force: true }); } catch {}
+    for (const e of st.torrents.values()) if (e.timer) clearTimeout(e.timer);
     st.torrents.clear();
-    st.pending.length = 0;
+    st.pendingHashes.clear();
     for (const t of [...(client.torrents || [])]) { try { await new Promise(r => t.destroy({ destroyStore: true }, r)); } catch {} }
     try { await fsp.rm(cacheDir, { recursive: true, force: true }); } catch {}
     await ensureDir(cacheDir);
@@ -1366,28 +1400,80 @@ async function startWeb(opts, srcArg) {
   const cacheDir = DEFAULT_CACHE;
   await ensureDir(cacheDir);
   const client = new WebTorrent({ destroyStoreOnDestroy: false });
+  client.on('error', e => console.error('client:', (e && e.message) || e));
   const token = opts.lan ? crypto.randomBytes(8).toString('hex') : '';
   const base = token ? '/t/' + token : '';
-  const st = { torrents: new Map(), nextId: 1, vlc: [], port: 0, pending: [], autoSelect: !!srcArg, boot: crypto.randomBytes(8).toString('hex') };
-  client.on('torrent', t => {
-    t.on('error', () => {});
-    const id = st.pending.shift();
-    if (id == null) { try { t.destroy(); } catch {} return; }
-    const dup = [...st.torrents.values()].find(e => e.t.infoHash === t.infoHash);
-    if (dup) { try { t.destroy(); } catch {} return; }
-    t.files.forEach(f => f.deselect()); // webtorrent по умолчанию выбирает все файлы
-    try { t.fileSelector = (tt, index, file) => (file._selections && file._selections.length ? 2 : 0); } catch {}
-    const sel = new Set();
-    const vids = t.files.map((f, i) => ({ f, i })).filter(x => VIDEO_EXT.has(path.extname(x.f.name).toLowerCase()));
-    if (st.autoSelect) {
-      st.autoSelect = false;
-      vids.forEach(x => sel.add(x.i));
-    } else if (vids.length === 1) {
-      sel.add(vids[0].i); // фильм один — авто-старт
+  const st = {
+    torrents: new Map(), nextId: 1, vlc: [], port: 0, autoSelect: !!srcArg,
+    pendingHashes: new Map(), boot: crypto.randomBytes(8).toString('hex'),
+  };
+
+  function registerTorrent(id, t, hash) {
+    const e = { id, t, hash: hash || null, sel: new Set(), error: null, applied: false };
+    e.selectAll = st.autoSelect;
+    st.autoSelect = false;
+    st.torrents.set(id, e);
+    e.timer = setTimeout(() => {
+      if (!t.ready && !e.error) e.error = 'meta-timeout';
+    }, META_TIMEOUT_MS);
+    e.timer.unref?.();
+    t.on('error', err => { e.error = String((err && err.message) || err); });
+    const apply = () => {
+      if (e.applied) return;
+      e.applied = true;
+      clearTimeout(e.timer);
+      e.timer = null;
+      e.error = null;
+      if (e.hash) st.pendingHashes.delete(e.hash);
+      if (t.infoHash) st.pendingHashes.delete(String(t.infoHash).toLowerCase());
+      t.files.forEach(f => f.deselect()); // webtorrent по умолчанию выбирает все файлы
+      try { t.fileSelector = (tt, index, file) => (file._selections && file._selections.length ? 2 : 0); } catch {}
+      const vids = t.files.map((f, i) => ({ f, i })).filter(x => VIDEO_EXT.has(path.extname(x.f.name).toLowerCase()));
+      if (e.selectAll) vids.forEach(x => e.sel.add(x.i));
+      else if (vids.length === 1) e.sel.add(vids[0].i); // фильм один — авто-старт
+      e.sel.forEach(i => t.files[i]?.select());
+    };
+    if (t.ready) apply();
+    else t.once('ready', apply);
+    return e;
+  }
+
+  // Добавления идут по очереди: так id и дедупликация не разъезжаются,
+  // даже если два magnet пришли одновременно.
+  let addChain = Promise.resolve();
+  async function addSource(source) {
+    // Локальный .torrent читаем в Buffer: parse-torrent не умеет пути,
+    // а для Buffer дедуп работает ещё до метаданных.
+    if (typeof source === 'string' && !/^magnet:/i.test(source) && !/^https?:/i.test(source)) {
+      try { if (fs.existsSync(source) && fs.statSync(source).isFile()) source = await fsp.readFile(source); } catch {}
     }
-    sel.forEach(i => t.files[i]?.select());
-    st.torrents.set(id, { id, t, sel });
-  });
+    let hash = null;
+    // Для magnet/файла считаем infoHash до client.add: так дубль ловится ещё
+    // до метаданных, когда у торрента в клиенте infoHash может быть не готов.
+    if (Buffer.isBuffer(source) || (typeof source === 'string' && /^magnet:/i.test(source))) {
+      let parsed;
+      try { parsed = await parseTorrent(source); } catch { throw new Error('invalid torrent'); }
+      hash = parsed && parsed.infoHash ? String(parsed.infoHash).toLowerCase() : null;
+      if (!hash) throw new Error('invalid torrent');
+      const existing = client.torrents.find(t => !t.destroyed && t.infoHash === hash);
+      if (existing) {
+        const e = [...st.torrents.values()].find(x => x.t === existing || x.t.infoHash === hash);
+        if (e) return { id: e.id, dup: true };
+      }
+      const pendingId = st.pendingHashes.get(hash);
+      if (pendingId != null && st.torrents.has(pendingId)) return { id: pendingId, dup: true };
+    }
+    const t = client.add(source, { path: cacheDir });
+    const id = st.nextId++;
+    if (hash) st.pendingHashes.set(hash, id);
+    registerTorrent(id, t, hash);
+    return { id };
+  }
+  st.addTorrent = source => {
+    const p = addChain.then(() => addSource(source));
+    addChain = p.catch(() => {});
+    return p;
+  };
   const server = makeWebServer(client, st, opts, cacheDir, base);
   const host = opts.lan ? '0.0.0.0' : '127.0.0.1';
   st.port = await listenOnFreePort(server, host, opts.port);
@@ -1402,7 +1488,10 @@ async function startWeb(opts, srcArg) {
     const opener = process.platform === 'darwin' ? 'open' : 'xdg-open';
     try { spawn(opener, [url], { stdio: 'ignore' }); } catch {}
   }
-  if (srcArg) { st.pending.push(st.nextId++); client.add(srcArg, { path: cacheDir }); }
+  if (srcArg) {
+    try { await st.addTorrent(srcArg); }
+    catch (e) { console.error('add:', (e && e.message) || e); }
+  }
   let cleaning = false;
   async function shutdown(reason, code = 0) {
     if (cleaning) return; cleaning = true;

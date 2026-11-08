@@ -14,7 +14,7 @@ fn main() {
             let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".into());
             let deps = format!("{}/Library/Application Support/TorrentOnline", home);
             let script = format!(
-                "mkdir -p '{deps}'; cp '{res}/wtui.js' '{res}/package.json' '{deps}/' 2>/dev/null; cd '{deps}'; [ -f node_modules/.installed ] || (npm i --omit=dev && touch node_modules/.installed); exec node wtui.js --web --port=8123 --no-open",
+                "mkdir -p '{deps}'; cp '{res}/wtui.js' '{res}/package.json' '{res}/package-lock.json' '{deps}/' 2>/dev/null; rm -rf '{deps}/vendor'; cp -R '{res}/vendor' '{deps}/vendor' 2>/dev/null; cd '{deps}'; [ \"$(cat node_modules/.installed 2>/dev/null)\" = \"$(shasum package-lock.json | cut -d' ' -f1)\" ] || (npm i --omit=dev && shasum package-lock.json | cut -d' ' -f1 > node_modules/.installed); exec node wtui.js --web --port=8123 --no-open",
                 deps = deps,
                 res = res.display()
             );
